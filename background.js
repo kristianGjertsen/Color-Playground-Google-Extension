@@ -382,32 +382,86 @@ const ensureBasePalette = async (tabId, hostname, data, fallback) => {
     return normalizePalette(fallback);
 };
 
-const resolvePaletteForTab = async (tabId, url, data) => {
+const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const captureOriginalForTab = async (tabId, hostname) => {
+    let tab = null;
+    if (tabId) {
+        try {
+            tab = await chrome.tabs.get(tabId);
+        } catch (error) {
+            tab = null;
+        }
+    }
+    if (!tab) {
+        tab = await queryActiveTab();
+    }
+    if (!tab || !tab.id || !tab.url || isRestrictedUrl(tab.url)) return;
+    const resolvedHostname = hostname || getHostnameFromUrl(tab.url);
+    if (!resolvedHostname || resolvedHostname === "*") return;
+
+    removePaletteFromTab(tab.id);
+    await wait(80);
+
+    let detected = null;
+    try {
+        const [res] = await analyzePageColors(tab.id);
+        if (res && res.result) {
+            detected = normalizePalette(res.result);
+        }
+    } catch (error) {
+        detected = null;
+    }
+
+    const data = await getStorage();
+    const baseMap = data.bases || {};
+    const siteMap = data.sites || {};
+    const basePalette = detected || normalizePalette(baseMap[resolvedHostname] || DEFAULT_PALETTE);
+    const nextBases = { ...baseMap, [resolvedHostname]: basePalette };
+    const nextSites = { ...siteMap, [resolvedHostname]: basePalette };
+
+    await new Promise(resolve =>
+        chrome.storage.local.set({ bases: nextBases, sites: nextSites }, resolve)
+    );
+
+    await syncHostname(resolvedHostname);
+};
+
+const resolvePaletteForTab = async (tabId, url, data, options = {}) => {
     if (!data.enabled) return null;
     if (!url || isRestrictedUrl(url)) return null;
     const hostname = getHostnameFromUrl(url);
     if (data.disabledSites && data.disabledSites[hostname]) return null;
 
     const siteMap = data.sites || {};
+    const baseMap = data.bases || {};
     const overrides = siteMap[hostname] || {};
     const hasOverrides = Object.keys(overrides).length > 0;
     const resolvedSettings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+    const fallbackPalette =
+        resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
+    let base = baseMap[hostname];
+    if (!base && options.ensureBase) {
+        base = await ensureBasePalette(tabId, hostname, data, fallbackPalette);
+        if (base) {
+            data.bases = { ...baseMap, [hostname]: base };
+        }
+    }
+
     if (!hasOverrides && resolvedSettings.newSiteDefault === "disabled") {
         return null;
     }
 
-    const fallbackPalette =
-        resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
     if (hasOverrides) {
-        const base = await ensureBasePalette(tabId, hostname, data, fallbackPalette);
-        return normalizePalette({ ...base, ...overrides });
+        const resolvedBase = base || fallbackPalette;
+        return normalizePalette({ ...resolvedBase, ...overrides });
     }
     return normalizePalette(fallbackPalette);
 };
 
-const syncTabWithData = async (tab, data) => {
+const syncTabWithData = async (tab, data, options = {}) => {
     if (!tab || !tab.id || !tab.url || isRestrictedUrl(tab.url)) return;
-    const palette = await resolvePaletteForTab(tab.id, tab.url, data);
+    const palette = await resolvePaletteForTab(tab.id, tab.url, data, options);
     if (!palette) {
         removePaletteFromTab(tab.id);
         return;
@@ -458,12 +512,54 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         syncHostname(message.hostname).then(() => sendResponse({ ok: true }));
         return true;
     }
+    if (message.type === "capture-original") {
+        captureOriginalForTab(message.tabId, message.hostname).then(() =>
+            sendResponse({ ok: true })
+        );
+        return true;
+    }
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== "complete") return;
     if (!tab.url || isRestrictedUrl(tab.url)) return;
     getStorage().then((data) => {
-        syncTabWithData(tab, data);
+        syncTabWithData(tab, data, { ensureBase: true });
     });
+});
+
+
+chrome.runtime.onMessage.addListener((msg, sender) => {
+    if (msg.type !== "AI_GENERATE_PALETTE") return;
+
+    fetch("https://colorplayground.kristiangjertsen5.workers.dev", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: msg.prompt })
+    })
+        .then(r => r.json())
+        .then((response) => {
+            console.log("AI response:", response);
+            const { palette } = response || {};
+            if (!palette) return;
+
+            // 🔁 Bruk samme vei som presets
+            chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+                if (!tab?.id || !tab.url) return;
+
+                const hostname = new URL(tab.url).hostname;
+
+                chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
+                    const sites = { ...(data.sites || {}) };
+                    sites[hostname] = palette;
+
+                    chrome.storage.local.set({ sites }, () => {
+                        applyPaletteToTab(tab.id, normalizePalette(palette));
+                    });
+                });
+            });
+        })
+        .catch(err => {
+            console.error("AI palette error:", err);
+        });
 });

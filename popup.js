@@ -629,6 +629,11 @@ const notifyBackground = (type, payload = {}) => {
     chrome.runtime.sendMessage({ type, ...payload });
 };
 
+const requestBackground = (type, payload = {}) =>
+    new Promise(resolve => {
+        chrome.runtime.sendMessage({ type, ...payload }, resolve);
+    });
+
 const queryActiveTab = (callback) => {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
         if (tabs && tabs.length) {
@@ -796,14 +801,12 @@ document.querySelectorAll("button[data-theme]").forEach(btn => {
         refreshActiveTab().then(() => {
             const themeName = btn.dataset.theme;
             if (themeName === "original") {
-                currentPalette = {};
-                const displayPalette = normalizePalette(basePalette);
-                syncInputs(displayPalette);
-                savePaletteForHost(activeHostname, currentPalette).then(() => {
-                    if (!activeHostname || activeHostname === "*") return;
-                    notifyBackground("sync-hostname", {
-                        hostname: activeHostname
-                    });
+                if (!activeHostname || activeHostname === "*") return;
+                requestBackground("capture-original", {
+                    tabId: activeTabId,
+                    hostname: activeHostname
+                }).then(() => {
+                    loadState();
                 });
                 return;
             }
@@ -835,3 +838,93 @@ document.querySelectorAll("input[type=color]").forEach(input => {
         });
     });
 });
+
+
+// AI Palette Generation, Api call to background.js
+const aiInput = document.getElementById("aiPrompt");
+const aiButton = document.getElementById("aiGenerateButton");
+const aiStatus = document.getElementById("aiStatus");
+const aiSpinner = document.getElementById("aiSpinner");
+const AI_COOLDOWN_MS = 20000;
+let aiCooldownTimer = null;
+
+const updateAiCooldownUi = (remainingMs) => {
+    if (!aiButton) return;
+    if (remainingMs <= 0) {
+        aiButton.disabled = false;
+        if (aiStatus) aiStatus.textContent = "";
+        if (aiSpinner) aiSpinner.classList.remove("is-active");
+        if (aiCooldownTimer) {
+            clearInterval(aiCooldownTimer);
+            aiCooldownTimer = null;
+        }
+        return;
+    }
+
+    aiButton.disabled = true;
+    if (aiSpinner) aiSpinner.classList.add("is-active");
+    if (aiStatus) {
+        aiStatus.textContent = `Cooldown: ${Math.ceil(remainingMs / 1000)}s`;
+    }
+};
+
+const startAiCooldown = (startTime) => {
+    if (aiCooldownTimer) {
+        clearInterval(aiCooldownTimer);
+        aiCooldownTimer = null;
+    }
+    const tick = () => {
+        const remaining = AI_COOLDOWN_MS - (Date.now() - startTime);
+        updateAiCooldownUi(remaining);
+    };
+    tick();
+    aiCooldownTimer = setInterval(tick, 250);
+};
+
+if (aiButton && aiInput) {
+    aiButton.addEventListener("click", () => {
+        const prompt = aiInput.value.trim();
+        if (prompt.length < 3) {
+            if (aiStatus) {
+                aiStatus.textContent = "Please enter at least 3 characters.";
+            }
+            if (aiSpinner) aiSpinner.classList.remove("is-active");
+            return;
+        }
+        if (prompt.length > 100) {
+            if (aiStatus) {
+                aiStatus.textContent = "Maximum 100 characters.";
+            }
+            if (aiSpinner) aiSpinner.classList.remove("is-active");
+            return;
+        }
+
+        chrome.storage.local.get({ aiLastRequest: 0 }, ({ aiLastRequest }) => {
+            const now = Date.now();
+            const elapsed = now - aiLastRequest;
+            if (elapsed < AI_COOLDOWN_MS) {
+                startAiCooldown(aiLastRequest);
+                return;
+            }
+
+            chrome.storage.local.set({ aiLastRequest: now }, () => {
+                startAiCooldown(now);
+                chrome.runtime.sendMessage({
+                    type: "AI_GENERATE_PALETTE",
+                    prompt
+                });
+            });
+        });
+    });
+}
+
+if (aiButton) {
+    chrome.storage.local.get({ aiLastRequest: 0 }, ({ aiLastRequest }) => {
+        const elapsed = Date.now() - aiLastRequest;
+        if (aiLastRequest && elapsed < AI_COOLDOWN_MS) {
+            startAiCooldown(aiLastRequest);
+        } else {
+            updateAiCooldownUi(0);
+        }
+    });
+}

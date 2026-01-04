@@ -94,6 +94,21 @@
         <button data-theme="original" class="original-button" type="button">
             Original
         </button>
+
+        <section>
+            <h2>Generate palette using AI</h2>
+
+            <textarea id="aiPrompt" rows="3" placeholder="Describe a theme (e.g. calm nordic, pink accent)"></textarea>
+
+            <button id="aiGenerateButton" type="button">
+                Generate
+            </button>
+
+            <div class="ai-status-row">
+                <span id="aiSpinner" class="ai-spinner" aria-hidden="true"></span>
+                <div id="aiStatus" aria-live="polite"></div>
+            </div>
+        </section>
     </div>
 
     <aside class="settings-panel" aria-hidden="true">

@@ -232,6 +232,62 @@ button:hover {
     background: #475569;
 }
 
+#aiGenerateButton:disabled {
+    background: #1f2937;
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+#aiPrompt {
+    width: 100%;
+    min-height: 72px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0b1220;
+    color: #e5e7eb;
+    font-size: 12px;
+    line-height: 1.4;
+    font-family: inherit;
+    resize: none;
+    box-sizing: border-box;
+}
+
+#aiPrompt:focus {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+}
+
+.ai-status-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 18px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #94a3b8;
+}
+
+.ai-spinner {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(148, 163, 184, 0.35);
+    border-top-color: #38bdf8;
+    display: none;
+    animation: ai-spin 0.8s linear infinite;
+}
+
+.ai-spinner.is-active {
+    display: inline-block;
+}
+
+@keyframes ai-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .original-button {
     width: 100%;
     margin-top: 10px;
