@@ -77,6 +77,19 @@ const STYLE_ENGINE_ID = "color-playground-engine";
 const STYLE_VARS_ID = "color-playground-vars";
 const LEGACY_STYLE_ID = "color-playground-style";
 const ORIGINAL_MARKER = "__original";
+const ROLE_ATTRS = {
+    bgPrimary: "data-cp-bg-primary",
+    bgSecondary: "data-cp-bg-secondary",
+    surfaceRaised: "data-cp-surface-raised",
+    textPrimary: "data-cp-text-primary",
+    textSecondary: "data-cp-text-secondary",
+    textHeading: "data-cp-text-heading",
+    accentPrimary: "data-cp-accent-primary",
+    accentSecondary: "data-cp-accent-secondary",
+    border: "data-cp-border",
+    icon: "data-cp-icon"
+};
+const ALL_ROLE_ATTRS = Object.values(ROLE_ATTRS);
 const DEFAULT_PALETTE = { ...themes.dark };
 const STORAGE_DEFAULTS = {
     enabled: false,
@@ -232,10 +245,42 @@ const paletteToVarsCss = (palette) => {
 
 const applyPaletteToTab = (tabId, palette) => {
     const varsCss = paletteToVarsCss(palette);
+    const activeAttrs = Object.entries(ROLE_ATTRS)
+        .filter(([key]) => palette && palette[key])
+        .map(([, attr]) => attr);
     engineCssPromise.then(engineCss => {
         chrome.scripting.executeScript({
             target: { tabId },
-            func: () => {
+            func: (engineId, varsId, legacyId, engineCssText, varsCssText, allAttrs, enabledAttrs) => {
+                const legacy = document.getElementById(legacyId);
+                if (legacy) legacy.remove();
+
+                const existingEngine = document.getElementById(engineId);
+                if (existingEngine) existingEngine.remove();
+                const existingVars = document.getElementById(varsId);
+                if (existingVars) existingVars.remove();
+
+                const root = document.head || document.documentElement;
+                const rootEl = document.documentElement;
+
+                allAttrs.forEach(attr => {
+                    if (enabledAttrs.includes(attr)) {
+                        rootEl.setAttribute(attr, "1");
+                    } else {
+                        rootEl.removeAttribute(attr);
+                    }
+                });
+
+                const engine = document.createElement("style");
+                engine.id = engineId;
+                engine.textContent = engineCssText;
+                root.appendChild(engine);
+
+                const vars = document.createElement("style");
+                vars.id = varsId;
+                vars.textContent = varsCssText;
+                root.appendChild(vars);
+
                 // Installer kun én gang per side
                 if (window.__cpButtonMarkerInstalled) {
                     window.__cpMarkButtons?.();
@@ -317,53 +362,17 @@ const applyPaletteToTab = (tabId, palette) => {
 
                 window.addEventListener("resize", schedule, { passive: true });
                 window.addEventListener("scroll", schedule, { passive: true });
-            }
+            },
+            args: [
+                STYLE_ENGINE_ID,
+                STYLE_VARS_ID,
+                LEGACY_STYLE_ID,
+                engineCss,
+                varsCss,
+                ALL_ROLE_ATTRS,
+                activeAttrs
+            ]
         });
-
-    });
-
-    chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => {
-            const isTransparent = (value) =>
-                !value ||
-                value === "transparent" ||
-                value === "rgba(0, 0, 0, 0)" ||
-                value === "rgba(0,0,0,0)";
-            const toPx = (value) => parseFloat(value) || 0;
-
-            document.querySelectorAll("a[href]").forEach(a => {
-                const r = a.getBoundingClientRect();
-                const width = r.width;
-                const height = r.height;
-                const area = width * height;
-                const style = getComputedStyle(a);
-                const paddingX = toPx(style.paddingLeft) + toPx(style.paddingRight);
-                const borderRadius = toPx(style.borderRadius);
-                const hasBg = !isTransparent(style.backgroundColor);
-                const display = style.display;
-
-                const isLikelyButton =
-                    height >= 32 &&
-                    height <= 64 &&
-                    width >= 80 &&
-                    width <= 360 &&
-                    area <= 35000 &&
-                    paddingX >= 16 &&
-                    hasBg &&
-                    borderRadius >= 6 &&
-                    (display === "inline-block" ||
-                        display === "inline-flex" ||
-                        display === "flex" ||
-                        display === "inline");
-
-                if (isLikelyButton) {
-                    a.dataset.cpButton = "true";
-                } else {
-                    a.removeAttribute("data-cp-button");
-                }
-            });
-        }
     });
 };
 
@@ -529,13 +538,16 @@ const refreshBasePalette = () => {
 const removePaletteFromTab = (tabId) => {
     chrome.scripting.executeScript({
         target: { tabId },
-        func: (engineId, varsId, legacyId) => {
+        func: (engineId, varsId, legacyId, allAttrs) => {
             [engineId, varsId, legacyId].forEach(id => {
                 const node = document.getElementById(id);
                 if (node) node.remove();
             });
+            allAttrs.forEach(attr => {
+                document.documentElement.removeAttribute(attr);
+            });
         },
-        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID]
+        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID, ALL_ROLE_ATTRS]
     });
 };
 

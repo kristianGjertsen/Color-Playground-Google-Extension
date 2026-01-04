@@ -18,6 +18,19 @@ const DEFAULT_SETTINGS = {
     defaultPalette: DEFAULT_PALETTE
 };
 const ORIGINAL_MARKER = "__original";
+const ROLE_ATTRS = {
+    bgPrimary: "data-cp-bg-primary",
+    bgSecondary: "data-cp-bg-secondary",
+    surfaceRaised: "data-cp-surface-raised",
+    textPrimary: "data-cp-text-primary",
+    textSecondary: "data-cp-text-secondary",
+    textHeading: "data-cp-text-heading",
+    accentPrimary: "data-cp-accent-primary",
+    accentSecondary: "data-cp-accent-secondary",
+    border: "data-cp-border",
+    icon: "data-cp-icon"
+};
+const ALL_ROLE_ATTRS = Object.values(ROLE_ATTRS);
 const STORAGE_DEFAULTS = {
     enabled: false,
     sites: {},
@@ -61,10 +74,13 @@ const paletteToVarsCss = (palette) => {
 
 const applyPaletteToTab = (tabId, palette) => {
     const varsCss = paletteToVarsCss(palette);
+    const activeAttrs = Object.entries(ROLE_ATTRS)
+        .filter(([key]) => palette && palette[key])
+        .map(([, attr]) => attr);
     engineCssPromise.then(engineCss => {
         chrome.scripting.executeScript({
             target: { tabId },
-            func: (engineId, varsId, legacyId, engineCssText, varsCssText) => {
+            func: (engineId, varsId, legacyId, engineCssText, varsCssText, allAttrs, enabledAttrs) => {
                 const legacy = document.getElementById(legacyId);
                 if (legacy) legacy.remove();
 
@@ -74,6 +90,15 @@ const applyPaletteToTab = (tabId, palette) => {
                 if (existingVars) existingVars.remove();
 
                 const root = document.head || document.documentElement;
+                const rootEl = document.documentElement;
+
+                allAttrs.forEach(attr => {
+                    if (enabledAttrs.includes(attr)) {
+                        rootEl.setAttribute(attr, "1");
+                    } else {
+                        rootEl.removeAttribute(attr);
+                    }
+                });
 
                 const engine = document.createElement("style");
                 engine.id = engineId;
@@ -90,7 +115,9 @@ const applyPaletteToTab = (tabId, palette) => {
                 STYLE_VARS_ID,
                 LEGACY_STYLE_ID,
                 engineCss,
-                varsCss
+                varsCss,
+                ALL_ROLE_ATTRS,
+                activeAttrs
             ]
         });
     });
@@ -187,13 +214,16 @@ const applyPaletteToTab = (tabId, palette) => {
 const removePaletteFromTab = (tabId) => {
     chrome.scripting.executeScript({
         target: { tabId },
-        func: (engineId, varsId, legacyId) => {
+        func: (engineId, varsId, legacyId, allAttrs) => {
             [engineId, varsId, legacyId].forEach(id => {
                 const node = document.getElementById(id);
                 if (node) node.remove();
             });
+            allAttrs.forEach(attr => {
+                document.documentElement.removeAttribute(attr);
+            });
         },
-        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID]
+        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID, ALL_ROLE_ATTRS]
     });
 };
 
