@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
     newSiteDefault: "disabled",
     defaultPalette: DEFAULT_PALETTE
 };
+const ORIGINAL_MARKER = "__original";
 const STORAGE_DEFAULTS = {
     enabled: false,
     sites: {},
@@ -46,23 +47,17 @@ const normalizePalette = (palette) => ({
     ...(palette || {})
 });
 
-const paletteToVarsCss = (palette) => `
-:root {
-  --bg-primary: ${palette.bgPrimary};
-  --bg-secondary: ${palette.bgSecondary};
-  --surface-raised: ${palette.surfaceRaised};
-
-  --text-primary: ${palette.textPrimary};
-  --text-secondary: ${palette.textSecondary};
-  --text-heading: ${palette.textHeading};
-
-  --accent-primary: ${palette.accentPrimary};
-  --accent-secondary: ${palette.accentSecondary};
-
-  --border-color: ${palette.border};
-  --icon-color: ${palette.icon};
-}
-`;
+const paletteToVarsCss = (palette) => {
+    const lines = [":root {"];
+    const entries = Object.entries(palette || {});
+    entries.forEach(([key, value]) => {
+        if (!value || key === ORIGINAL_MARKER) return;
+        const cssKey = `--${key.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}`;
+        lines.push(`  ${cssKey}: ${value};`);
+    });
+    lines.push("}");
+    return lines.join("\n");
+};
 
 const applyPaletteToTab = (tabId, palette) => {
     const varsCss = paletteToVarsCss(palette);
@@ -416,12 +411,25 @@ const captureOriginalForTab = async (tabId, hostname) => {
     const data = await getStorage();
     const baseMap = data.bases || {};
     const siteMap = data.sites || {};
-    const basePalette = detected || normalizePalette(baseMap[resolvedHostname] || DEFAULT_PALETTE);
-    const nextBases = { ...baseMap, [resolvedHostname]: basePalette };
-    const nextSites = { ...siteMap, [resolvedHostname]: basePalette };
+    const disabledMap = { ...(data.disabledSites || {}) };
+    if (disabledMap[resolvedHostname]) {
+        delete disabledMap[resolvedHostname];
+    }
+
+    const nextBases = { ...baseMap };
+    if (detected) {
+        nextBases[resolvedHostname] = detected;
+    }
+    const nextSites = {
+        ...siteMap,
+        [resolvedHostname]: { [ORIGINAL_MARKER]: true }
+    };
 
     await new Promise(resolve =>
-        chrome.storage.local.set({ bases: nextBases, sites: nextSites }, resolve)
+        chrome.storage.local.set(
+            { bases: nextBases, sites: nextSites, disabledSites: disabledMap },
+            resolve
+        )
     );
 
     await syncHostname(resolvedHostname);
@@ -434,35 +442,36 @@ const resolvePaletteForTab = async (tabId, url, data, options = {}) => {
     if (data.disabledSites && data.disabledSites[hostname]) return null;
 
     const siteMap = data.sites || {};
-    const baseMap = data.bases || {};
-    const overrides = siteMap[hostname] || {};
+    const siteEntry = siteMap[hostname] || {};
+    const { [ORIGINAL_MARKER]: original, ...overrides } = siteEntry;
     const hasOverrides = Object.keys(overrides).length > 0;
     const resolvedSettings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
     const fallbackPalette =
         resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
-    let base = baseMap[hostname];
-    if (!base && options.ensureBase) {
-        base = await ensureBasePalette(tabId, hostname, data, fallbackPalette);
-        if (base) {
-            data.bases = { ...baseMap, [hostname]: base };
-        }
+    if (!hasOverrides && original) {
+        return {};
     }
-
+    if (hasOverrides) {
+        return overrides;
+    }
     if (!hasOverrides && resolvedSettings.newSiteDefault === "disabled") {
         return null;
-    }
-
-    if (hasOverrides) {
-        const resolvedBase = base || fallbackPalette;
-        return normalizePalette({ ...resolvedBase, ...overrides });
     }
     return normalizePalette(fallbackPalette);
 };
 
 const syncTabWithData = async (tab, data, options = {}) => {
     if (!tab || !tab.id || !tab.url || isRestrictedUrl(tab.url)) return;
+    if (options.ensureBase) {
+        const hostname = getHostnameFromUrl(tab.url);
+        await ensureBasePalette(tab.id, hostname, data, DEFAULT_PALETTE);
+    }
     const palette = await resolvePaletteForTab(tab.id, tab.url, data, options);
     if (!palette) {
+        removePaletteFromTab(tab.id);
+        return;
+    }
+    if (Object.keys(palette).length === 0) {
         removePaletteFromTab(tab.id);
         return;
     }

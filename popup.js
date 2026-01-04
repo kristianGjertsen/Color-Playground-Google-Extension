@@ -76,6 +76,7 @@ const themes = {
 const STYLE_ENGINE_ID = "color-playground-engine";
 const STYLE_VARS_ID = "color-playground-vars";
 const LEGACY_STYLE_ID = "color-playground-style";
+const ORIGINAL_MARKER = "__original";
 const DEFAULT_PALETTE = { ...themes.dark };
 const STORAGE_DEFAULTS = {
     enabled: false,
@@ -218,25 +219,15 @@ const normalizePalette = (palette) => ({
 });
 
 const paletteToVarsCss = (palette) => {
-    const p = normalizePalette(palette);
-
-    return `
-:root {
-  --bg-primary: ${p.bgPrimary};
-  --bg-secondary: ${p.bgSecondary};
-  --surface-raised: ${p.surfaceRaised};
-
-  --text-primary: ${p.textPrimary};
-  --text-secondary: ${p.textSecondary};
-  --text-heading: ${p.textHeading};
-
-  --accent-primary: ${p.accentPrimary};
-  --accent-secondary: ${p.accentSecondary};
-
-  --border-color: ${p.border};
-  --icon-color: ${p.icon};
-}
-`.trim();
+    const lines = [":root {"];
+    const entries = Object.entries(palette || {});
+    entries.forEach(([key, value]) => {
+        if (!value || key === ORIGINAL_MARKER) return;
+        const cssKey = `--${key.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}`;
+        lines.push(`  ${cssKey}: ${value};`);
+    });
+    lines.push("}");
+    return lines.join("\n");
 };
 
 const applyPaletteToTab = (tabId, palette) => {
@@ -606,7 +597,8 @@ const loadState = () => {
             if (baseMap[activeHostname]) {
                 basePalette = normalizePalette(baseMap[activeHostname]);
             }
-            const overrides = siteMap[activeHostname] || {};
+            const siteEntry = siteMap[activeHostname] || {};
+            const { [ORIGINAL_MARKER]: original, ...overrides } = siteEntry;
             currentPalette = { ...overrides };
             const displayPalette = normalizePalette({
                 ...basePalette,
@@ -625,7 +617,7 @@ const savePaletteForHost = (hostname, palette) =>
             const nextSites = { ...(sites || {}) };
             const cleaned = { ...palette };
             Object.keys(cleaned).forEach(key => {
-                if (!cleaned[key]) {
+                if (key === ORIGINAL_MARKER || !cleaned[key]) {
                     delete cleaned[key];
                 }
             });
@@ -669,20 +661,21 @@ const updateUiState = (next) => {
 
 const buildMergedPalette = (hostname, data) => {
     const siteMap = data.sites || {};
-    const baseMap = data.bases || {};
     const resolvedSettings = { ...STORAGE_DEFAULTS.settings, ...(data.settings || {}) };
-    const overrides = siteMap[hostname] || {};
+    const siteEntry = siteMap[hostname] || {};
+    const { [ORIGINAL_MARKER]: original, ...overrides } = siteEntry;
     const hasOverrides = Object.keys(overrides).length > 0;
     const fallbackPalette =
         resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
 
+    if (!hasOverrides && original) {
+        return {};
+    }
+    if (hasOverrides) {
+        return overrides;
+    }
     if (!hasOverrides && resolvedSettings.newSiteDefault === "disabled") {
         return null;
-    }
-
-    const base = baseMap[hostname] || fallbackPalette;
-    if (hasOverrides) {
-        return normalizePalette({ ...base, ...overrides });
     }
     return normalizePalette(fallbackPalette);
 };
