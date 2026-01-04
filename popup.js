@@ -88,6 +88,11 @@ const STORAGE_DEFAULTS = {
         newSiteDefault: "disabled",
         defaultPaletteName: "dark",
         defaultPalette: DEFAULT_PALETTE
+    },
+    ui: {
+        theme: "paper",
+        textSize: "medium",
+        windowSize: "medium"
     }
 };
 
@@ -98,8 +103,11 @@ const engineCssPromise = fetch(ENGINE_CSS_URL)
 
 const toggle = document.getElementById("enabledToggle");
 const siteToggle = document.getElementById("siteToggle");
-const newSiteSelect = document.getElementById("newSiteDefault");
+const newSiteButtons = document.querySelectorAll("[data-site-default]");
 const defaultPaletteSelect = document.getElementById("defaultPalette");
+const uiThemeButtons = document.querySelectorAll("[data-ui-theme]");
+const uiTextSizeButtons = document.querySelectorAll("[data-ui-text]");
+const uiWindowSizeButtons = document.querySelectorAll("[data-window-size]");
 const rolesDetails = document.querySelector(".roles-details");
 const openSettingsButton = document.getElementById("openSettings");
 const closeSettingsButton = document.getElementById("closeSettings");
@@ -113,6 +121,82 @@ let settingsState = {
     newSiteDefault: "disabled",
     defaultPaletteName: "dark",
     defaultPalette: DEFAULT_PALETTE
+};
+let uiState = { ...STORAGE_DEFAULTS.ui };
+
+const UI_WINDOW_PRESETS = {
+    small: { width: 320, height: 460, expanded: 600 },
+    medium: { width: 350, height: 480, expanded: 680 },
+    large: { width: 380, height: 540, expanded: 760 }
+};
+
+const WINDOW_SIZE_ALIASES = {
+    compact: "small",
+    cozy: "medium",
+    roomy: "large"
+};
+
+const UI_TEXT_SIZES = {
+    small: 0.95,
+    medium: 1,
+    large: 1.1
+};
+
+const normalizeWindowSize = (value) =>
+    WINDOW_SIZE_ALIASES[value] || value || STORAGE_DEFAULTS.ui.windowSize;
+
+const setWindowSizeButtons = (value) => {
+    if (!uiWindowSizeButtons || uiWindowSizeButtons.length === 0) return;
+    const normalized = normalizeWindowSize(value);
+    uiWindowSizeButtons.forEach(button => {
+        const isActive = button.dataset.windowSize === normalized;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+};
+
+const setUiThemeButtons = (value) => {
+    if (!uiThemeButtons || uiThemeButtons.length === 0) return;
+    uiThemeButtons.forEach(button => {
+        const isActive = button.dataset.uiTheme === value;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+};
+
+const setUiTextButtons = (value) => {
+    if (!uiTextSizeButtons || uiTextSizeButtons.length === 0) return;
+    uiTextSizeButtons.forEach(button => {
+        const isActive = button.dataset.uiText === value;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+};
+
+const setNewSiteButtons = (value) => {
+    if (!newSiteButtons || newSiteButtons.length === 0) return;
+    newSiteButtons.forEach(button => {
+        const isActive = button.dataset.siteDefault === value;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+};
+
+const applyUiSettings = (ui) => {
+    const resolved = { ...STORAGE_DEFAULTS.ui, ...(ui || {}) };
+    const normalizedWindow = normalizeWindowSize(resolved.windowSize);
+    const sizePreset = UI_WINDOW_PRESETS[normalizedWindow] || UI_WINDOW_PRESETS.medium;
+    const scale = UI_TEXT_SIZES[resolved.textSize] || 1;
+    document.documentElement.style.setProperty("--ui-width", `${sizePreset.width}px`);
+    document.documentElement.style.setProperty("--ui-height", `${sizePreset.height}px`);
+    document.documentElement.style.setProperty(
+        "--ui-height-expanded",
+        `${sizePreset.expanded}px`
+    );
+    document.documentElement.style.setProperty("--ui-scale", `${scale}`);
+    if (document.body) {
+        document.body.dataset.theme = resolved.theme || "carbon";
+    }
 };
 
 const isRestrictedUrl = (url) =>
@@ -500,18 +584,22 @@ const updateSiteToggle = () => {
 const loadState = () => {
     chrome.storage.local.get(
         STORAGE_DEFAULTS,
-        ({ enabled, sites, disabledSites, settings, bases }) => {
+        ({ enabled, sites, disabledSites, settings, bases, ui }) => {
             if (toggle) {
                 toggle.checked = enabled;
             }
             settingsState = { ...settingsState, ...(settings || {}) };
-            if (newSiteSelect) {
-                newSiteSelect.value = settingsState.newSiteDefault || "enabled";
-            }
+            setNewSiteButtons(settingsState.newSiteDefault || "enabled");
             if (defaultPaletteSelect) {
                 defaultPaletteSelect.value =
                     settingsState.defaultPaletteName || "dark";
             }
+            uiState = { ...STORAGE_DEFAULTS.ui, ...(ui || {}) };
+            uiState.windowSize = normalizeWindowSize(uiState.windowSize);
+            applyUiSettings(uiState);
+            setUiThemeButtons(uiState.theme || "carbon");
+            setUiTextButtons(uiState.textSize || "medium");
+            setWindowSizeButtons(uiState.windowSize);
 
             const siteMap = sites || {};
             const baseMap = bases || {};
@@ -564,6 +652,19 @@ const applyPaletteToActiveTab = (palette) => {
         }
         applyPaletteToTab(activeTabId, merged);
     });
+};
+
+const updateUiState = (next) => {
+    const nextState = { ...(next || {}) };
+    if (nextState.windowSize) {
+        nextState.windowSize = normalizeWindowSize(nextState.windowSize);
+    }
+    uiState = { ...uiState, ...nextState };
+    chrome.storage.local.set({ ui: uiState });
+    applyUiSettings(uiState);
+    setUiThemeButtons(uiState.theme);
+    setUiTextButtons(uiState.textSize);
+    setWindowSizeButtons(uiState.windowSize);
 };
 
 const buildMergedPalette = (hostname, data) => {
@@ -711,18 +812,23 @@ if (siteToggle) {
     });
 }
 
-if (newSiteSelect) {
-    newSiteSelect.addEventListener("change", () => {
-        refreshActiveTab().then(() => {
-            const newSiteDefault = newSiteSelect.value;
-            settingsState = {
-                ...settingsState,
-                newSiteDefault
-            };
-            chrome.storage.local.set({ settings: settingsState }, () => {
-                if (!activeHostname || activeHostname === "*") return;
-                notifyBackground("sync-hostname", {
-                    hostname: activeHostname
+if (newSiteButtons && newSiteButtons.length) {
+    newSiteButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const value = button.dataset.siteDefault;
+            if (!value) return;
+            refreshActiveTab().then(() => {
+                const newSiteDefault = value;
+                settingsState = {
+                    ...settingsState,
+                    newSiteDefault
+                };
+                chrome.storage.local.set({ settings: settingsState }, () => {
+                    setNewSiteButtons(newSiteDefault);
+                    if (!activeHostname || activeHostname === "*") return;
+                    notifyBackground("sync-hostname", {
+                        hostname: activeHostname
+                    });
                 });
             });
         });
@@ -745,6 +851,36 @@ if (defaultPaletteSelect) {
                     hostname: activeHostname
                 });
             });
+        });
+    });
+}
+
+if (uiThemeButtons && uiThemeButtons.length) {
+    uiThemeButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const value = button.dataset.uiTheme;
+            if (!value) return;
+            updateUiState({ theme: value });
+        });
+    });
+}
+
+if (uiTextSizeButtons && uiTextSizeButtons.length) {
+    uiTextSizeButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const value = button.dataset.uiText;
+            if (!value) return;
+            updateUiState({ textSize: value });
+        });
+    });
+}
+
+if (uiWindowSizeButtons && uiWindowSizeButtons.length) {
+    uiWindowSizeButtons.forEach(button => {
+        button.addEventListener("click", () => {
+            const value = button.dataset.windowSize;
+            if (!value) return;
+            updateUiState({ windowSize: value });
         });
     });
 }
@@ -782,7 +918,7 @@ if (closeSettingsButton) {
 if (clearAllDataButton) {
     clearAllDataButton.addEventListener("click", () => {
         const shouldClear = window.confirm(
-            "Clear all saved data for all sites? This will reset your settings."
+            "Clear all saved data for all sites? This will reset your settings. And saved color palettes on sites will be lost."
         );
         if (!shouldClear) return;
         chrome.storage.local.clear(() => {

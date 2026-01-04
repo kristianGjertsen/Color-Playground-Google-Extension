@@ -9,7 +9,7 @@
 
 <body>
     <div class="top-row">
-        <h1>🎨 Color Playground</h1>
+        <h1> Color Playground</h1>
         <div class="top-actions">
             <button id="openSettings" class="settings-button" type="button" aria-label="Open settings">
                 ⚙️
@@ -37,8 +37,13 @@
             </div>
         </section>
 
+
+        <button data-theme="original" class="original-button" type="button">
+            Original
+        </button>
+
         <details class="roles-details">
-            <summary>Roles</summary>
+            <summary>Element colors</summary>
             <div class="roles-content">
                 <div class="role">
                     <label>Background (Primary)</label>
@@ -91,12 +96,11 @@
                 </div>
             </div>
         </details>
-        <button data-theme="original" class="original-button" type="button">
-            Original
-        </button>
 
         <section>
-            <h2>Generate palette using AI</h2>
+            <h2 class="ai-title">
+                Generate palette using AI </span>
+            </h2>
 
             <textarea id="aiPrompt" rows="3" placeholder="Describe a theme (e.g. calm nordic, pink accent)"></textarea>
 
@@ -119,27 +123,57 @@
             </button>
         </div>
         <div class="settings">
-            <div class="setting-row">
-                <label for="newSiteDefault">New site default</label>
-                <select id="newSiteDefault">
-                    <option value="enabled">Enable</option>
-                    <option value="disabled">Disable</option>
-                </select>
+            <div class="settings-section">
+                <h3>Popup</h3>
+                <div class="setting-row column">
+                    <label>Theme</label>
+                    <div class="option-group" role="group" aria-label="Theme">
+                        <button type="button" data-ui-theme="carbon">Carbon</button>
+                        <button type="button" data-ui-theme="paper">Paper</button>
+                        <button type="button" data-ui-theme="sage">Sage</button>
+                    </div>
+                </div>
+                <div class="setting-row column">
+                    <label>Text size</label>
+                    <div class="option-group" role="group" aria-label="Text size">
+                        <button type="button" data-ui-text="small">Small</button>
+                        <button type="button" data-ui-text="medium">Medium</button>
+                        <button type="button" data-ui-text="large">Large</button>
+                    </div>
+                </div>
+                <div class="setting-row column">
+                    <label>Window size</label>
+                    <div class="size-options" role="group" aria-label="Window size">
+                        <button type="button" data-window-size="small">Small</button>
+                        <button type="button" data-window-size="medium">Medium</button>
+                        <button type="button" data-window-size="large">Large</button>
+                    </div>
+                </div>
             </div>
-            <div class="setting-row">
-                <label for="defaultPalette">Default palette</label>
-                <select id="defaultPalette">
-                    <option value="dark">Dark</option>
-                    <option value="light">Light</option>
-                    <option value="neon">Neon</option>
-                    <option value="pink">Pink</option>
-                    <option value="purple">Purple</option>
-                    <option value="orange">Orange</option>
-                </select>
+            <div class="settings-section">
+                <h3>Behavior</h3>
+                <div class="setting-row column">
+                    <label>Apply theme on new site</label>
+                    <div class="option-group" role="group" aria-label="New site default">
+                        <button type="button" data-site-default="enabled">Enable</button>
+                        <button type="button" data-site-default="disabled">Disable</button>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label for="defaultPalette">Default palette</label>
+                    <select id="defaultPalette">
+                        <option value="pink">Pink</option>
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="neon">Neon</option>
+                        <option value="purple">Purple</option>
+                        <option value="orange">Orange</option>
+                    </select>
+                </div>
+                <button id="clearAllData" class="full-width-button" type="button">
+                    Clear all saved data
+                </button>
             </div>
-            <button id="clearAllData" class="danger-button" type="button">
-                Clear all saved data
-            </button>
         </div>
     </aside>
 </body>
