@@ -1,0 +1,194 @@
+body {
+    font-family: system-ui, sans-serif;
+    background: #0f172a;
+    color: #e5e7eb;
+    width: 280px;
+    padding: 6px 12px 12px;
+    height: 300px;
+    overflow-y: auto;
+}
+
+body.roles-expanded {
+    height: 600px;
+}
+
+.top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+h1 {
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+
+.site-toggle {
+    width: 100%;
+    margin: 2px 0 6px;
+    padding: 6px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    background: #1f2937;
+    color: #f8fafc;
+    font-size: 12px;
+}
+
+.site-toggle[aria-pressed="true"] {
+    background: #7f1d1d;
+}
+
+.site-toggle:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+h2 {
+    font-size: 13px;
+    margin: 12px 0 6px;
+    opacity: 0.8;
+}
+
+.roles-details {
+    margin-top: 12px;
+    border: 1px solid #1f2937;
+    border-radius: 8px;
+    padding: 6px 8px;
+    background: #0b1220;
+}
+
+.roles-details summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #cbd5f5;
+    list-style: none;
+}
+
+.roles-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.roles-details summary::after {
+    content: "▾";
+    float: right;
+    color: #94a3b8;
+}
+
+.roles-details[open] summary::after {
+    content: "▴";
+}
+
+.roles-content {
+    margin-top: 8px;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 42px;
+    height: 24px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #475569;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+}
+
+.slider:before {
+    content: "";
+    position: absolute;
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    top: 3px;
+    background: #f8fafc;
+    border-radius: 50%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s ease;
+}
+
+.switch input:checked + .slider {
+    background: #38bdf8;
+}
+
+.switch input:checked + .slider:before {
+    transform: translateX(18px);
+}
+
+.themes {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+button {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 72px;
+    padding: 6px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    background: #334155;
+    color: white;
+}
+
+button:hover {
+    background: #475569;
+}
+
+.role {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 6px 0;
+}
+
+.settings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setting-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+select {
+    background: #0f172a;
+    color: #e5e7eb;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+label {
+    font-size: 12px;
+}
+
+input[type="color"] {
+    width: 36px;
+    height: 24px;
+    border: none;
+    background: none;
+    cursor: pointer;
+}
