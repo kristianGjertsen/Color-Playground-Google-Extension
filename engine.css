@@ -1,0 +1,96 @@
+body {
+  background-color: var(--bg-primary) !important;
+}
+
+div, section, article, main, aside {
+  background-color: var(--bg-secondary) !important;
+}
+
+header,
+nav,
+[role="banner"],
+header *,
+nav * {
+  background-color: var(--surface-raised) !important;
+}
+
+p, li, span {
+  color: var(--text-primary) !important;
+}
+
+small, time, footer {
+  color: var(--text-secondary) !important;
+}
+
+h1, h2, h3, h4, h5 {
+  color: var(--text-heading) !important;
+}
+
+a, button {
+  color: var(--accent-primary) !important;
+}
+
+a[data-cp-button="true"] {
+  background-color: var(--accent-primary) !important;
+}
+
+* {
+  border-color: var(--border-color) !important;
+}
+
+input,
+textarea,
+select {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-secondary) !important;
+  opacity: 1;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 2px solid var(--accent-primary) !important;
+  outline-offset: 2px;
+}
+
+svg, svg * {
+  fill: var(--icon-color) !important;
+  stroke: var(--icon-color) !important;
+}
+
+/* === ChatGPT own style under === */
+[data-message-author-role="assistant"],
+[data-message-author-role="user"] {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  border-radius: 12px;
+}
+
+/* prose / markdown overrides */
+.markdown,
+.prose,
+.prose p,
+.prose * {
+  color: var(--text-primary) !important;
+}
+
+/* remove internal bg layers */
+[data-message-author-role] * {
+  background-color: transparent !important;
+}
+
+/* === ChatGPT prose token override === */
+.prose {
+  --tw-prose-body: var(--text-primary) !important;
+  --tw-prose-headings: var(--text-heading) !important;
+  --tw-prose-bold: var(--text-primary) !important;
+  --tw-prose-links: var(--accent-primary) !important;
+  --tw-prose-code: var(--text-primary) !important;
+  --tw-prose-quotes: var(--text-secondary) !important;
+}

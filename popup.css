@@ -3,13 +3,29 @@ body {
     background: #0f172a;
     color: #e5e7eb;
     width: 280px;
-    padding: 6px 12px 12px;
+    padding: 0;
     height: 300px;
     overflow-y: auto;
+    position: relative;
+    overflow-x: hidden;
 }
 
 body.roles-expanded {
-    height: 600px;
+    height: 500px;
+}
+
+body.settings-open {
+    overflow-y: hidden;
+}
+
+.main-content {
+    position: relative;
+    z-index: 1;
+    padding: 0 12px 12px;
+}
+
+body.settings-open .main-content {
+    display: none;
 }
 
 .top-row {
@@ -18,6 +34,13 @@ body.roles-expanded {
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 2px;
+    padding: 6px 12px 0;
+}
+
+.top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 h1 {
@@ -25,6 +48,63 @@ h1 {
     margin-bottom: 4px;
 }
 
+.settings-button {
+    border: none;
+    background: #1f2937;
+    color: #e5e7eb;
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.settings-button:hover {
+    background: #334155;
+}
+
+.settings-panel {
+    position: absolute;
+    inset: 0;
+    background: #0b1220;
+    border-left: none;
+    padding: 10px 12px 12px;
+    box-sizing: border-box;
+    transform: translateX(100%);
+    transition: transform 0.2s ease;
+    z-index: 2;
+    box-shadow: -6px 0 12px rgba(0, 0, 0, 0.35);
+}
+
+body.settings-open .settings-panel {
+    transform: translateX(0);
+}
+
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+}
+
+.settings-header h2 {
+    margin: 0;
+}
+
+.settings-close {
+    border: none;
+    background: #1f2937;
+    color: #e5e7eb;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+
+.settings-close:hover {
+    background: #334155;
+}
 .site-toggle {
     width: 100%;
     margin: 2px 0 6px;
@@ -152,6 +232,21 @@ button:hover {
     background: #475569;
 }
 
+.original-button {
+    width: 100%;
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #e5e7eb;
+    font-weight: 600;
+}
+
+.original-button:hover {
+    background: #111827;
+}
+
 .role {
     display: flex;
     justify-content: space-between;
@@ -179,6 +274,21 @@ select {
     border-radius: 6px;
     padding: 4px 6px;
     font-size: 12px;
+}
+
+.danger-button {
+    margin-top: 4px;
+    background: #7f1d1d;
+    color: #fef2f2;
+    border: none;
+    border-radius: 6px;
+    padding: 6px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.danger-button:hover {
+    background: #991b1b;
 }
 
 label {

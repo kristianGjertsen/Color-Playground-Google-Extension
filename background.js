@@ -14,104 +14,21 @@ const DEFAULT_PALETTE = {
     icon: "#e5e7eb"
 };
 const DEFAULT_SETTINGS = {
-    newSiteDefault: "enabled",
+    newSiteDefault: "disabled",
     defaultPalette: DEFAULT_PALETTE
 };
+const STORAGE_DEFAULTS = {
+    enabled: false,
+    sites: {},
+    disabledSites: {},
+    settings: DEFAULT_SETTINGS,
+    bases: {}
+};
 
-const ENGINE_CSS = `
-body {
-  background-color: var(--bg-primary) !important;
-}
-
-div, section, article, main, aside {
-  background-color: var(--bg-secondary) !important;
-}
-
-header,
-nav,
-[role="banner"],
-header *,
-nav * {
-  background-color: var(--surface-raised) !important;
-}
-
-p, li, span {
-  color: var(--text-primary) !important;
-}
-
-small, time, footer {
-  color: var(--text-secondary) !important;
-}
-
-h1, h2, h3, h4, h5 {
-  color: var(--text-heading) !important;
-}
-
-a, button {
-  color: var(--accent-primary) !important;
-}
-
-* {
-  border-color: var(--border-color) !important;
-}
-
-input,
-textarea,
-select {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-color) !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--text-secondary) !important;
-  opacity: 1;
-}
-
-input:focus,
-textarea:focus,
-select:focus {
-  outline: 2px solid var(--accent-primary) !important;
-  outline-offset: 2px;
-}
-
-svg, svg * {
-  fill: var(--icon-color) !important;
-  stroke: var(--icon-color) !important;
-}
-
-/* === ChatGPT own style under === */
-[data-message-author-role="assistant"],
-[data-message-author-role="user"] {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-radius: 12px;
-}
-
-/* prose / markdown overrides */
-.markdown,
-.prose,
-.prose p,
-.prose * {
-  color: var(--text-primary) !important;
-}
-
-/* remove internal bg layers */
-[data-message-author-role] * {
-  background-color: transparent !important;
-}
-
-/* === ChatGPT prose token override === */
-.prose {
-  --tw-prose-body: var(--text-primary) !important;
-  --tw-prose-headings: var(--text-heading) !important;
-  --tw-prose-bold: var(--text-primary) !important;
-  --tw-prose-links: var(--accent-primary) !important;
-  --tw-prose-code: var(--text-primary) !important;
-  --tw-prose-quotes: var(--text-secondary) !important;
-}
-`;
+const ENGINE_CSS_URL = chrome.runtime.getURL("engine.css");
+const engineCssPromise = fetch(ENGINE_CSS_URL)
+    .then(response => response.text())
+    .catch(() => "");
 
 const isRestrictedUrl = (url) =>
     url.startsWith("chrome://") || url.startsWith("chrome-extension://");
@@ -149,32 +66,127 @@ const paletteToVarsCss = (palette) => `
 
 const applyPaletteToTab = (tabId, palette) => {
     const varsCss = paletteToVarsCss(palette);
+    engineCssPromise.then(engineCss => {
+        chrome.scripting.executeScript({
+            target: { tabId },
+            func: (engineId, varsId, legacyId, engineCssText, varsCssText) => {
+                const legacy = document.getElementById(legacyId);
+                if (legacy) legacy.remove();
+
+                const existingEngine = document.getElementById(engineId);
+                if (existingEngine) existingEngine.remove();
+                const existingVars = document.getElementById(varsId);
+                if (existingVars) existingVars.remove();
+
+                const root = document.head || document.documentElement;
+
+                const engine = document.createElement("style");
+                engine.id = engineId;
+                engine.textContent = engineCssText;
+                root.appendChild(engine);
+
+                const vars = document.createElement("style");
+                vars.id = varsId;
+                vars.textContent = varsCssText;
+                root.appendChild(vars);
+            },
+            args: [
+                STYLE_ENGINE_ID,
+                STYLE_VARS_ID,
+                LEGACY_STYLE_ID,
+                engineCss,
+                varsCss
+            ]
+        });
+    });
+
     chrome.scripting.executeScript({
         target: { tabId },
-        func: (engineId, varsId, legacyId, engineCss, varsCssText) => {
-            const legacy = document.getElementById(legacyId);
-            if (legacy) legacy.remove();
-
-            let engine = document.getElementById(engineId);
-            if (!engine) {
-                engine = document.createElement("style");
-                engine.id = engineId;
-                const root = document.head || document.documentElement;
-                root.appendChild(engine);
+        func: () => {
+            // Installer kun én gang per side
+            if (window.__cpButtonMarkerInstalled) {
+                window.__cpMarkButtons?.();
+                return;
             }
-            engine.textContent = engineCss;
+            window.__cpButtonMarkerInstalled = true;
 
-            let vars = document.getElementById(varsId);
-            if (!vars) {
-                vars = document.createElement("style");
-                vars.id = varsId;
-                const root = document.head || document.documentElement;
-                root.appendChild(vars);
-            }
-            vars.textContent = varsCssText;
-        },
-        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID, ENGINE_CSS, varsCss]
+            const isTransparent = (value) =>
+                !value ||
+                value === "transparent" ||
+                value === "rgba(0, 0, 0, 0)" ||
+                value === "rgba(0,0,0,0)";
+
+            const toPx = (value) => parseFloat(value) || 0;
+
+            const markButtons = () => {
+                document.querySelectorAll("a[href]").forEach(a => {
+                    const r = a.getBoundingClientRect();
+                    const width = r.width;
+                    const height = r.height;
+                    if (!width || !height) {
+                        a.removeAttribute("data-cp-button");
+                        return;
+                    }
+
+                    const area = width * height;
+                    const style = getComputedStyle(a);
+                    const paddingX = toPx(style.paddingLeft) + toPx(style.paddingRight);
+                    const borderRadius = toPx(style.borderRadius);
+                    const hasBg = !isTransparent(style.backgroundColor);
+                    const display = style.display;
+
+                    // NB: hasBg er ofte for strengt på SPA-sider.
+                    // Derfor: tillat også "knappete" uten bakgrunn hvis radius+padding er stor nok.
+                    const looksButtonyWithoutBg = borderRadius >= 10 && paddingX >= 18;
+
+                    const isLikelyButton =
+                        height >= 28 &&
+                        height <= 72 &&
+                        width >= 72 &&
+                        width <= 420 &&
+                        area <= 90000 &&
+                        paddingX >= 12 &&
+                        borderRadius >= 6 &&
+                        (hasBg || looksButtonyWithoutBg) &&
+                        (display === "inline-block" ||
+                            display === "inline-flex" ||
+                            display === "flex" ||
+                            display === "inline");
+
+                    if (isLikelyButton) {
+                        a.dataset.cpButton = "true";
+                    } else {
+                        a.removeAttribute("data-cp-button");
+                    }
+                });
+            };
+
+            window.__cpMarkButtons = markButtons;
+
+            // Throttle kjøringer ved DOM-endringer
+            let timer = null;
+            const schedule = () => {
+                if (timer) return;
+                timer = setTimeout(() => {
+                    timer = null;
+                    markButtons();
+                }, 200);
+            };
+
+            // Kjør flere ganger etter load for SPA-render
+            markButtons();
+            [150, 500, 1200, 2500, 5000].forEach(ms => setTimeout(markButtons, ms));
+
+            // Observer DOM og re-kjør når UI endrer seg
+            const obs = new MutationObserver(schedule);
+            obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+            window.__cpButtonObserver = obs;
+
+            window.addEventListener("resize", schedule, { passive: true });
+            window.addEventListener("scroll", schedule, { passive: true });
+        }
     });
+
 };
 
 const removePaletteFromTab = (tabId) => {
@@ -331,45 +343,127 @@ const analyzePageColors = (tabId) =>
                 }
             }
 
-            console.log("Detected color roles:", roles);
             return roles;
         }
-    }).then(([res]) => {
-        console.log("Page roles returned:", res.result);
     });
 
+const getStorage = () =>
+    new Promise(resolve => chrome.storage.local.get(STORAGE_DEFAULTS, resolve));
+
+const queryActiveTab = () =>
+    new Promise(resolve => {
+        chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+            if (tabs && tabs.length) {
+                resolve(tabs[0]);
+                return;
+            }
+            chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+                resolve(tab);
+            });
+        });
+    });
+
+const ensureBasePalette = async (tabId, hostname, data, fallback) => {
+    const baseMap = data.bases || {};
+    if (baseMap[hostname]) {
+        return normalizePalette(baseMap[hostname]);
+    }
+    try {
+        const [res] = await analyzePageColors(tabId);
+        if (res && res.result) {
+            const base = normalizePalette(res.result);
+            const nextBases = { ...baseMap, [hostname]: base };
+            chrome.storage.local.set({ bases: nextBases });
+            return base;
+        }
+    } catch (error) {
+        return normalizePalette(fallback);
+    }
+    return normalizePalette(fallback);
+};
+
+const resolvePaletteForTab = async (tabId, url, data) => {
+    if (!data.enabled) return null;
+    if (!url || isRestrictedUrl(url)) return null;
+    const hostname = getHostnameFromUrl(url);
+    if (data.disabledSites && data.disabledSites[hostname]) return null;
+
+    const siteMap = data.sites || {};
+    const overrides = siteMap[hostname] || {};
+    const hasOverrides = Object.keys(overrides).length > 0;
+    const resolvedSettings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
+    if (!hasOverrides && resolvedSettings.newSiteDefault === "disabled") {
+        return null;
+    }
+
+    const fallbackPalette =
+        resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
+    if (hasOverrides) {
+        const base = await ensureBasePalette(tabId, hostname, data, fallbackPalette);
+        return normalizePalette({ ...base, ...overrides });
+    }
+    return normalizePalette(fallbackPalette);
+};
+
+const syncTabWithData = async (tab, data) => {
+    if (!tab || !tab.id || !tab.url || isRestrictedUrl(tab.url)) return;
+    const palette = await resolvePaletteForTab(tab.id, tab.url, data);
+    if (!palette) {
+        removePaletteFromTab(tab.id);
+        return;
+    }
+    applyPaletteToTab(tab.id, palette);
+};
+
+const syncAllTabs = async () => {
+    const data = await getStorage();
+    const tabs = await new Promise(resolve => chrome.tabs.query({}, resolve));
+    await Promise.all(tabs.map(tab => syncTabWithData(tab, data)));
+};
+
+const syncActiveTab = async () => {
+    const tab = await queryActiveTab();
+    if (!tab) return;
+    const data = await getStorage();
+    await syncTabWithData(tab, data);
+};
+
+const syncHostname = async (hostname) => {
+    if (!hostname || hostname === "*") return;
+    const data = await getStorage();
+    const tabs = await new Promise(resolve => chrome.tabs.query({}, resolve));
+    const matches = tabs.filter(
+        tab =>
+            tab &&
+            tab.url &&
+            !isRestrictedUrl(tab.url) &&
+            getHostnameFromUrl(tab.url) === hostname
+    );
+    await Promise.all(matches.map(tab => syncTabWithData(tab, data)));
+};
+
 console.log("Service worker started");
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || !message.type) return;
+    if (message.type === "sync-all") {
+        syncAllTabs().then(() => sendResponse({ ok: true }));
+        return true;
+    }
+    if (message.type === "sync-active") {
+        syncActiveTab().then(() => sendResponse({ ok: true }));
+        return true;
+    }
+    if (message.type === "sync-hostname") {
+        syncHostname(message.hostname).then(() => sendResponse({ ok: true }));
+        return true;
+    }
+});
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     if (changeInfo.status !== "complete") return;
     if (!tab.url || isRestrictedUrl(tab.url)) return;
-
-    chrome.storage.local.get(
-        { enabled: true, sites: {}, disabledSites: {}, settings: DEFAULT_SETTINGS },
-        ({ enabled, sites, disabledSites, settings }) => {
-            if (!enabled) return;
-
-            const hostname = getHostnameFromUrl(tab.url);
-            if (disabledSites && disabledSites[hostname]) {
-                removePaletteFromTab(tabId);
-                return;
-            }
-            const siteMap = sites || {};
-            const storedPalette = siteMap[hostname];
-            const resolvedSettings = { ...DEFAULT_SETTINGS, ...(settings || {}) };
-            if (!storedPalette && resolvedSettings.newSiteDefault === "disabled") {
-                removePaletteFromTab(tabId);
-                return;
-            }
-            const fallbackPalette =
-                resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
-            const palette = normalizePalette(storedPalette || fallbackPalette);
-
-            if (!storedPalette) {
-                analyzePageColors(tabId);
-            }
-
-            applyPaletteToTab(tabId, palette);
-        }
-    );
+    getStorage().then((data) => {
+        syncTabWithData(tab, data);
+    });
 });

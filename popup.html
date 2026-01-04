@@ -10,29 +10,99 @@
 <body>
     <div class="top-row">
         <h1>🎨 Color Playground</h1>
-        <label class="switch">
-            <input type="checkbox" id="enabledToggle" aria-label="Toggle Color Playground" />
-            <span class="slider"></span>
-        </label>
-    </div>
-    <button id="siteToggle" class="site-toggle" type="button" aria-pressed="false">
-        Disable on this site
-    </button>
-
-    <section>
-        <h2>Presets</h2>
-        <div class="themes">
-            <button data-theme="dark">Dark</button>
-            <button data-theme="light">Light</button>
-            <button data-theme="neon">Neon</button>
-            <button data-theme="pink">Pink</button>
-            <button data-theme="purple">Purple</button>
-            <button data-theme="orange">Orange</button>
+        <div class="top-actions">
+            <button id="openSettings" class="settings-button" type="button" aria-label="Open settings">
+                ⚙️
+            </button>
+            <label class="switch">
+                <input type="checkbox" id="enabledToggle" aria-label="Toggle Color Playground" />
+                <span class="slider"></span>
+            </label>
         </div>
-    </section>
+    </div>
+    <div class="main-content">
+        <button id="siteToggle" class="site-toggle" type="button" aria-pressed="false">
+            Disable on this site
+        </button>
 
-    <section>
-        <h2>Settings</h2>
+        <section>
+            <h2>Presets</h2>
+            <div class="themes">
+                <button data-theme="dark">Dark</button>
+                <button data-theme="light">Light</button>
+                <button data-theme="neon">Neon</button>
+                <button data-theme="pink">Pink</button>
+                <button data-theme="purple">Purple</button>
+                <button data-theme="orange">Orange</button>
+            </div>
+        </section>
+
+        <details class="roles-details">
+            <summary>Roles</summary>
+            <div class="roles-content">
+                <div class="role">
+                    <label>Background (Primary)</label>
+                    <input type="color" data-role="bgPrimary" />
+                </div>
+
+                <div class="role">
+                    <label>Background (Secondary)</label>
+                    <input type="color" data-role="bgSecondary" />
+                </div>
+
+                <div class="role">
+                    <label>Surface / Header</label>
+                    <input type="color" data-role="surfaceRaised" />
+                </div>
+
+                <div class="role">
+                    <label>Text (Primary)</label>
+                    <input type="color" data-role="textPrimary" />
+                </div>
+
+                <div class="role">
+                    <label>Text (Secondary)</label>
+                    <input type="color" data-role="textSecondary" />
+                </div>
+
+                <div class="role">
+                    <label>Text (Heading)</label>
+                    <input type="color" data-role="textHeading" />
+                </div>
+
+                <div class="role">
+                    <label>Accent (Primary)</label>
+                    <input type="color" data-role="accentPrimary" />
+                </div>
+
+                <div class="role">
+                    <label>Accent (Secondary)</label>
+                    <input type="color" data-role="accentSecondary" />
+                </div>
+
+                <div class="role">
+                    <label>Border</label>
+                    <input type="color" data-role="border" />
+                </div>
+
+                <div class="role">
+                    <label>Icon</label>
+                    <input type="color" data-role="icon" />
+                </div>
+            </div>
+        </details>
+        <button data-theme="original" class="original-button" type="button">
+            Original
+        </button>
+    </div>
+
+    <aside class="settings-panel" aria-hidden="true">
+        <div class="settings-header">
+            <h2>Settings</h2>
+            <button id="closeSettings" class="settings-close" type="button" aria-label="Back">
+                Back
+            </button>
+        </div>
         <div class="settings">
             <div class="setting-row">
                 <label for="newSiteDefault">New site default</label>
@@ -52,63 +122,11 @@
                     <option value="orange">Orange</option>
                 </select>
             </div>
+            <button id="clearAllData" class="danger-button" type="button">
+                Clear all saved data
+            </button>
         </div>
-    </section>
-
-    <details class="roles-details">
-        <summary>Roles</summary>
-        <div class="roles-content">
-            <div class="role">
-                <label>Background (Primary)</label>
-                <input type="color" data-role="bgPrimary" />
-            </div>
-
-            <div class="role">
-                <label>Background (Secondary)</label>
-                <input type="color" data-role="bgSecondary" />
-            </div>
-
-            <div class="role">
-                <label>Surface / Header</label>
-                <input type="color" data-role="surfaceRaised" />
-            </div>
-
-            <div class="role">
-                <label>Text (Primary)</label>
-                <input type="color" data-role="textPrimary" />
-            </div>
-
-            <div class="role">
-                <label>Text (Secondary)</label>
-                <input type="color" data-role="textSecondary" />
-            </div>
-
-            <div class="role">
-                <label>Text (Heading)</label>
-                <input type="color" data-role="textHeading" />
-            </div>
-
-            <div class="role">
-                <label>Accent (Primary)</label>
-                <input type="color" data-role="accentPrimary" />
-            </div>
-
-            <div class="role">
-                <label>Accent (Secondary)</label>
-                <input type="color" data-role="accentSecondary" />
-            </div>
-
-            <div class="role">
-                <label>Border</label>
-                <input type="color" data-role="border" />
-            </div>
-
-            <div class="role">
-                <label>Icon</label>
-                <input type="color" data-role="icon" />
-            </div>
-        </div>
-    </details>
+    </aside>
 </body>
 
 <script src="popup.js"></script>

@@ -78,124 +78,39 @@ const STYLE_VARS_ID = "color-playground-vars";
 const LEGACY_STYLE_ID = "color-playground-style";
 const DEFAULT_PALETTE = { ...themes.dark };
 const STORAGE_DEFAULTS = {
-    enabled: true,
+    enabled: false,
     sites: {
         "*": DEFAULT_PALETTE
     },
     disabledSites: {},
+    bases: {},
     settings: {
-        newSiteDefault: "enabled",
+        newSiteDefault: "disabled",
         defaultPaletteName: "dark",
         defaultPalette: DEFAULT_PALETTE
     }
 };
 
-const ENGINE_CSS = `
-body {
-  background-color: var(--bg-primary) !important;
-}
-
-div, section, article, main, aside {
-  background-color: var(--bg-secondary) !important;
-}
-
-header,
-nav,
-[role="banner"],
-header *,
-nav * {
-  background-color: var(--surface-raised) !important;
-}
-
-p, li, span {
-  color: var(--text-primary) !important;
-}
-
-small, time, footer {
-  color: var(--text-secondary) !important;
-}
-
-h1, h2, h3, h4, h5 {
-  color: var(--text-heading) !important;
-}
-
-a, button {
-  color: var(--accent-primary) !important;
-}
-
-* {
-  border-color: var(--border-color) !important;
-}
-
-input,
-textarea,
-select {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-color) !important;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--text-secondary) !important;
-  opacity: 1;
-}
-
-input:focus,
-textarea:focus,
-select:focus {
-  outline: 2px solid var(--accent-primary) !important;
-  outline-offset: 2px;
-}
-
-svg, svg * {
-  fill: var(--icon-color) !important;
-  stroke: var(--icon-color) !important;
-}
-
-/* === ChatGPT own style under === */
-[data-message-author-role="assistant"],
-[data-message-author-role="user"] {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-radius: 12px;
-}
-
-/* prose / markdown overrides */
-.markdown,
-.prose,
-.prose p,
-.prose * {
-  color: var(--text-primary) !important;
-}
-
-/* remove internal bg layers */
-[data-message-author-role] * {
-  background-color: transparent !important;
-}
-  /* === ChatGPT prose token override === */
-.prose {
-  --tw-prose-body: var(--text-primary) !important;
-  --tw-prose-headings: var(--text-heading) !important;
-  --tw-prose-bold: var(--text-primary) !important;
-  --tw-prose-links: var(--accent-primary) !important;
-  --tw-prose-code: var(--text-primary) !important;
-  --tw-prose-quotes: var(--text-secondary) !important;
-}
-
-`;
+const ENGINE_CSS_URL = chrome.runtime.getURL("engine.css");
+const engineCssPromise = fetch(ENGINE_CSS_URL)
+    .then(response => response.text())
+    .catch(() => "");
 
 const toggle = document.getElementById("enabledToggle");
 const siteToggle = document.getElementById("siteToggle");
 const newSiteSelect = document.getElementById("newSiteDefault");
 const defaultPaletteSelect = document.getElementById("defaultPalette");
 const rolesDetails = document.querySelector(".roles-details");
+const openSettingsButton = document.getElementById("openSettings");
+const closeSettingsButton = document.getElementById("closeSettings");
+const clearAllDataButton = document.getElementById("clearAllData");
 let activeTabId = null;
 let activeHostname = "*";
-let currentPalette = { ...DEFAULT_PALETTE };
+let currentPalette = {};
+let basePalette = { ...DEFAULT_PALETTE };
 let siteDisabled = false;
 let settingsState = {
-    newSiteDefault: "enabled",
+    newSiteDefault: "disabled",
     defaultPaletteName: "dark",
     defaultPalette: DEFAULT_PALETTE
 };
@@ -218,51 +133,321 @@ const normalizePalette = (palette) => ({
     ...(palette || {})
 });
 
-const paletteToVarsCss = (palette) => `
+const paletteToVarsCss = (palette) => {
+    const p = normalizePalette(palette);
+
+    return `
 :root {
-  --bg-primary: ${palette.bgPrimary};
-  --bg-secondary: ${palette.bgSecondary};
-  --surface-raised: ${palette.surfaceRaised};
+  --bg-primary: ${p.bgPrimary};
+  --bg-secondary: ${p.bgSecondary};
+  --surface-raised: ${p.surfaceRaised};
 
-  --text-primary: ${palette.textPrimary};
-  --text-secondary: ${palette.textSecondary};
-  --text-heading: ${palette.textHeading};
+  --text-primary: ${p.textPrimary};
+  --text-secondary: ${p.textSecondary};
+  --text-heading: ${p.textHeading};
 
-  --accent-primary: ${palette.accentPrimary};
-  --accent-secondary: ${palette.accentSecondary};
+  --accent-primary: ${p.accentPrimary};
+  --accent-secondary: ${p.accentSecondary};
 
-  --border-color: ${palette.border};
-  --icon-color: ${palette.icon};
+  --border-color: ${p.border};
+  --icon-color: ${p.icon};
 }
-`;
+`.trim();
+};
 
 const applyPaletteToTab = (tabId, palette) => {
     const varsCss = paletteToVarsCss(palette);
+    engineCssPromise.then(engineCss => {
+        chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+                // Installer kun én gang per side
+                if (window.__cpButtonMarkerInstalled) {
+                    window.__cpMarkButtons?.();
+                    return;
+                }
+                window.__cpButtonMarkerInstalled = true;
+
+                const isTransparent = (value) =>
+                    !value ||
+                    value === "transparent" ||
+                    value === "rgba(0, 0, 0, 0)" ||
+                    value === "rgba(0,0,0,0)";
+
+                const toPx = (value) => parseFloat(value) || 0;
+
+                const markButtons = () => {
+                    document.querySelectorAll("a[href]").forEach(a => {
+                        const r = a.getBoundingClientRect();
+                        const width = r.width;
+                        const height = r.height;
+                        if (!width || !height) {
+                            a.removeAttribute("data-cp-button");
+                            return;
+                        }
+
+                        const area = width * height;
+                        const style = getComputedStyle(a);
+                        const paddingX = toPx(style.paddingLeft) + toPx(style.paddingRight);
+                        const borderRadius = toPx(style.borderRadius);
+                        const hasBg = !isTransparent(style.backgroundColor);
+                        const display = style.display;
+
+                        // NB: hasBg er ofte for strengt på SPA-sider.
+                        // Derfor: tillat også "knappete" uten bakgrunn hvis radius+padding er stor nok.
+                        const looksButtonyWithoutBg = borderRadius >= 10 && paddingX >= 18;
+
+                        const isLikelyButton =
+                            height >= 28 &&
+                            height <= 72 &&
+                            width >= 72 &&
+                            width <= 420 &&
+                            area <= 90000 &&
+                            paddingX >= 12 &&
+                            borderRadius >= 6 &&
+                            (hasBg || looksButtonyWithoutBg) &&
+                            (display === "inline-block" ||
+                                display === "inline-flex" ||
+                                display === "flex" ||
+                                display === "inline");
+
+                        if (isLikelyButton) {
+                            a.dataset.cpButton = "true";
+                        } else {
+                            a.removeAttribute("data-cp-button");
+                        }
+                    });
+                };
+
+                window.__cpMarkButtons = markButtons;
+
+                // Throttle kjøringer ved DOM-endringer
+                let timer = null;
+                const schedule = () => {
+                    if (timer) return;
+                    timer = setTimeout(() => {
+                        timer = null;
+                        markButtons();
+                    }, 200);
+                };
+
+                // Kjør flere ganger etter load for SPA-render
+                markButtons();
+                [150, 500, 1200, 2500, 5000].forEach(ms => setTimeout(markButtons, ms));
+
+                // Observer DOM og re-kjør når UI endrer seg
+                const obs = new MutationObserver(schedule);
+                obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+                window.__cpButtonObserver = obs;
+
+                window.addEventListener("resize", schedule, { passive: true });
+                window.addEventListener("scroll", schedule, { passive: true });
+            }
+        });
+
+    });
+
     chrome.scripting.executeScript({
         target: { tabId },
-        func: (engineId, varsId, legacyId, engineCss, varsCssText) => {
-            const legacy = document.getElementById(legacyId);
-            if (legacy) legacy.remove();
+        func: () => {
+            const isTransparent = (value) =>
+                !value ||
+                value === "transparent" ||
+                value === "rgba(0, 0, 0, 0)" ||
+                value === "rgba(0,0,0,0)";
+            const toPx = (value) => parseFloat(value) || 0;
 
-            let engine = document.getElementById(engineId);
-            if (!engine) {
-                engine = document.createElement("style");
-                engine.id = engineId;
-                const root = document.head || document.documentElement;
-                root.appendChild(engine);
-            }
-            engine.textContent = engineCss;
+            document.querySelectorAll("a[href]").forEach(a => {
+                const r = a.getBoundingClientRect();
+                const width = r.width;
+                const height = r.height;
+                const area = width * height;
+                const style = getComputedStyle(a);
+                const paddingX = toPx(style.paddingLeft) + toPx(style.paddingRight);
+                const borderRadius = toPx(style.borderRadius);
+                const hasBg = !isTransparent(style.backgroundColor);
+                const display = style.display;
 
-            let vars = document.getElementById(varsId);
-            if (!vars) {
-                vars = document.createElement("style");
-                vars.id = varsId;
-                const root = document.head || document.documentElement;
-                root.appendChild(vars);
+                const isLikelyButton =
+                    height >= 32 &&
+                    height <= 64 &&
+                    width >= 80 &&
+                    width <= 360 &&
+                    area <= 35000 &&
+                    paddingX >= 16 &&
+                    hasBg &&
+                    borderRadius >= 6 &&
+                    (display === "inline-block" ||
+                        display === "inline-flex" ||
+                        display === "flex" ||
+                        display === "inline");
+
+                if (isLikelyButton) {
+                    a.dataset.cpButton = "true";
+                } else {
+                    a.removeAttribute("data-cp-button");
+                }
+            });
+        }
+    });
+};
+
+const extractPagePalette = (tabId) =>
+    chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+            const elements = [
+                document.body,
+                ...document.querySelectorAll("main, section, header, footer, nav"),
+                ...document.querySelectorAll("p, h1, h2, h3, h4, h5, a, button, small, time")
+            ];
+
+            const PROPS = ["color", "backgroundColor"];
+            const colors = new Map();
+
+            elements.forEach(el => {
+                const style = getComputedStyle(el);
+                const area = el.offsetWidth * el.offsetHeight;
+
+                PROPS.forEach(prop => {
+                    const value = style[prop];
+                    if (
+                        !value ||
+                        value === "transparent" ||
+                        value.includes("rgba(0, 0, 0, 0)")
+                    ) {
+                        return;
+                    }
+
+                    if (!colors.has(value)) {
+                        colors.set(value, {
+                            count: 0,
+                            usages: []
+                        });
+                    }
+
+                    const entry = colors.get(value);
+                    entry.count++;
+
+                    entry.usages.push({
+                        prop,
+                        tag: el.tagName,
+                        area,
+                        isLink: el.tagName === "A",
+                        isButton: el.tagName === "BUTTON"
+                    });
+                });
+            });
+
+            const luminance = (rgb) => {
+                const [r, g, b] = rgb.match(/\d+/g).map(Number);
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            };
+
+            const sorted = [...colors.entries()]
+                .sort((a, b) => b[1].count - a[1].count);
+
+            const roles = {
+                bgPrimary: null,
+                bgSecondary: null,
+                surfaceRaised: null,
+                textPrimary: null,
+                textSecondary: null,
+                textHeading: null,
+                accentPrimary: null,
+                accentSecondary: null,
+                border: null,
+                icon: null
+            };
+
+            for (const [color, data] of sorted) {
+                const lum = luminance(color);
+
+                if (!roles.bgPrimary && lum > 210) {
+                    roles.bgPrimary = color;
+                    continue;
+                }
+
+                if (
+                    !roles.bgSecondary &&
+                    lum > 170 &&
+                    data.usages.some(u => u.prop === "backgroundColor" && u.area > 20000)
+                ) {
+                    roles.bgSecondary = color;
+                    continue;
+                }
+
+                if (
+                    !roles.surfaceRaised &&
+                    data.usages.some(u => u.tag === "HEADER" || u.tag === "NAV")
+                ) {
+                    roles.surfaceRaised = color;
+                    continue;
+                }
+
+                if (!roles.textPrimary && lum < 90) {
+                    roles.textPrimary = color;
+                    continue;
+                }
+
+                if (!roles.textHeading && data.usages.some(u => u.tag.startsWith("H"))) {
+                    roles.textHeading = color;
+                    continue;
+                }
+
+                if (!roles.textSecondary && lum >= 90 && lum < 150) {
+                    roles.textSecondary = color;
+                    continue;
+                }
+
+                if (
+                    !roles.accentPrimary &&
+                    data.usages.some(u => u.isLink || u.isButton)
+                ) {
+                    roles.accentPrimary = color;
+                    continue;
+                }
+
+                if (!roles.accentSecondary && lum >= 120 && lum < 200) {
+                    roles.accentSecondary = color;
+                    continue;
+                }
+
+                if (!roles.border && lum >= 120 && lum < 200) {
+                    roles.border = color;
+                    continue;
+                }
+
+                if (!roles.icon) {
+                    roles.icon = color;
+                }
             }
-            vars.textContent = varsCssText;
-        },
-        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID, ENGINE_CSS, varsCss]
+
+            return roles;
+        }
+    });
+
+const refreshBasePalette = () => {
+    if (!activeTabId) return;
+    if (toggle && toggle.checked) return;
+    chrome.storage.local.get(STORAGE_DEFAULTS, ({ bases }) => {
+        const baseMap = bases || {};
+        if (baseMap[activeHostname]) return;
+        extractPagePalette(activeTabId)
+            .then(([res]) => {
+                if (!res || !res.result) return;
+                const detected = res.result;
+                basePalette = normalizePalette(detected);
+                chrome.storage.local.set({
+                    bases: { ...baseMap, [activeHostname]: basePalette }
+                });
+                const displayPalette = normalizePalette({
+                    ...basePalette,
+                    ...currentPalette
+                });
+                syncInputs(displayPalette);
+            })
+            .catch(() => { });
     });
 };
 
@@ -315,7 +500,7 @@ const updateSiteToggle = () => {
 const loadState = () => {
     chrome.storage.local.get(
         STORAGE_DEFAULTS,
-        ({ enabled, sites, disabledSites, settings }) => {
+        ({ enabled, sites, disabledSites, settings, bases }) => {
             if (toggle) {
                 toggle.checked = enabled;
             }
@@ -329,62 +514,95 @@ const loadState = () => {
             }
 
             const siteMap = sites || {};
-            const fallbackPalette =
-                settingsState.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
-            const palette = siteMap[activeHostname] || fallbackPalette;
-            currentPalette = normalizePalette(palette);
-            syncInputs(currentPalette);
+            const baseMap = bases || {};
+            if (baseMap[activeHostname]) {
+                basePalette = normalizePalette(baseMap[activeHostname]);
+            }
+            const overrides = siteMap[activeHostname] || {};
+            currentPalette = { ...overrides };
+            const displayPalette = normalizePalette({
+                ...basePalette,
+                ...overrides
+            });
+            syncInputs(displayPalette);
             siteDisabled = Boolean(disabledSites && disabledSites[activeHostname]);
             updateSiteToggle();
         }
     );
 };
 
-const savePaletteForHost = (hostname, palette) => {
-    chrome.storage.local.get(STORAGE_DEFAULTS, ({ sites }) => {
-        const nextSites = { ...(sites || {}) };
-        if (!nextSites["*"]) {
-            nextSites["*"] = DEFAULT_PALETTE;
-        }
-        nextSites[hostname] = palette;
-        chrome.storage.local.set({ sites: nextSites });
+const savePaletteForHost = (hostname, palette) =>
+    new Promise(resolve => {
+        chrome.storage.local.get(STORAGE_DEFAULTS, ({ sites }) => {
+            const nextSites = { ...(sites || {}) };
+            const cleaned = { ...palette };
+            Object.keys(cleaned).forEach(key => {
+                if (!cleaned[key]) {
+                    delete cleaned[key];
+                }
+            });
+
+            if (Object.keys(cleaned).length === 0) {
+                delete nextSites[hostname];
+            } else {
+                nextSites[hostname] = cleaned;
+            }
+            chrome.storage.local.set({ sites: nextSites }, resolve);
+        });
     });
-};
 
 const applyPaletteToActiveTab = (palette) => {
     if (!toggle || !toggle.checked) return;
     if (!activeHostname || activeHostname === "*") return;
     if (siteDisabled) return;
     if (!activeTabId) return;
-    applyPaletteToTab(activeTabId, palette);
+    chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
+        const merged = buildMergedPalette(activeHostname, data);
+        if (!merged) {
+            removePaletteFromHostname(activeHostname);
+            return;
+        }
+        applyPaletteToTab(activeTabId, merged);
+    });
+};
+
+const buildMergedPalette = (hostname, data) => {
+    const siteMap = data.sites || {};
+    const baseMap = data.bases || {};
+    const resolvedSettings = { ...STORAGE_DEFAULTS.settings, ...(data.settings || {}) };
+    const overrides = siteMap[hostname] || {};
+    const hasOverrides = Object.keys(overrides).length > 0;
+    const fallbackPalette =
+        resolvedSettings.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
+
+    if (!hasOverrides && resolvedSettings.newSiteDefault === "disabled") {
+        return null;
+    }
+
+    const base = baseMap[hostname] || fallbackPalette;
+    if (hasOverrides) {
+        return normalizePalette({ ...base, ...overrides });
+    }
+    return normalizePalette(fallbackPalette);
 };
 
 const applyStoredPalettesToAllTabs = () => {
-    chrome.storage.local.get(
-        STORAGE_DEFAULTS,
-        ({ sites, disabledSites, settings }) => {
-            const siteMap = sites || {};
-            const disabledMap = disabledSites || {};
-            const fallbackPalette =
-                (settings && settings.defaultPalette) ||
-                siteMap["*"] ||
-                DEFAULT_PALETTE;
-            forEachEligibleTab(tab => {
-                const hostname = getHostnameFromUrl(tab.url);
-                if (disabledMap[hostname]) {
-                    removePaletteFromTab(tab.id);
-                    return;
-                }
-                const storedPalette = siteMap[hostname];
-                if (!storedPalette && settings && settings.newSiteDefault === "disabled") {
-                    removePaletteFromTab(tab.id);
-                    return;
-                }
-                const palette = storedPalette || fallbackPalette;
-                applyPaletteToTab(tab.id, normalizePalette(palette));
-            });
-        }
-    );
+    chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
+        const disabledMap = data.disabledSites || {};
+        forEachEligibleTab(tab => {
+            const hostname = getHostnameFromUrl(tab.url);
+            if (disabledMap[hostname]) {
+                removePaletteFromTab(tab.id);
+                return;
+            }
+            const paletteToApply = buildMergedPalette(hostname, data);
+            if (!paletteToApply) {
+                removePaletteFromTab(tab.id);
+                return;
+            }
+            applyPaletteToTab(tab.id, paletteToApply);
+        });
+    });
 };
 
 const applyPaletteToHostname = (hostname, palette) => {
@@ -407,7 +625,37 @@ const removePaletteFromAllTabs = () => {
     forEachEligibleTab(tab => removePaletteFromTab(tab.id));
 };
 
-chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+const notifyBackground = (type, payload = {}) => {
+    chrome.runtime.sendMessage({ type, ...payload });
+};
+
+const queryActiveTab = (callback) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+        if (tabs && tabs.length) {
+            callback(tabs[0]);
+            return;
+        }
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+            callback(tab);
+        });
+    });
+};
+
+const refreshActiveTab = () =>
+    new Promise(resolve => {
+        queryActiveTab((tab) => {
+            if (tab && tab.id) {
+                activeTabId = tab.id;
+                activeHostname =
+                    tab.url && !isRestrictedUrl(tab.url)
+                        ? getHostnameFromUrl(tab.url)
+                        : "*";
+            }
+            resolve(tab);
+        });
+    });
+
+queryActiveTab((tab) => {
     if (tab && tab.id && tab.url && !isRestrictedUrl(tab.url)) {
         activeTabId = tab.id;
         activeHostname = getHostnameFromUrl(tab.url);
@@ -416,93 +664,82 @@ chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
         activeHostname = "*";
     }
     loadState();
+    refreshBasePalette();
 });
 
 if (toggle) {
     toggle.addEventListener("change", () => {
-        const enabled = toggle.checked;
-        chrome.storage.local.set({ enabled });
-
-        if (enabled) {
-            applyStoredPalettesToAllTabs();
-        } else {
-            removePaletteFromAllTabs();
-        }
+        refreshActiveTab().then(() => {
+            const enabled = toggle.checked;
+            chrome.storage.local.set({ enabled }, () => {
+                notifyBackground("sync-all");
+            });
+        });
     });
 }
 
 if (siteToggle) {
     siteToggle.addEventListener("click", () => {
-        if (!activeHostname || activeHostname === "*") return;
-        chrome.storage.local.get(
-            STORAGE_DEFAULTS,
-            ({ sites, disabledSites }) => {
-                const disabledMap = { ...(disabledSites || {}) };
-                if (disabledMap[activeHostname]) {
-                    delete disabledMap[activeHostname];
-                    siteDisabled = false;
-                } else {
-                    disabledMap[activeHostname] = true;
-                    siteDisabled = true;
+        refreshActiveTab().then(() => {
+            if (!activeHostname || activeHostname === "*") return;
+            chrome.storage.local.get(
+                STORAGE_DEFAULTS,
+                (data) => {
+                    const { disabledSites } = data;
+                    const disabledMap = { ...(disabledSites || {}) };
+                    if (disabledMap[activeHostname]) {
+                        delete disabledMap[activeHostname];
+                        siteDisabled = false;
+                    } else {
+                        disabledMap[activeHostname] = true;
+                        siteDisabled = true;
+                    }
+                    chrome.storage.local.set({ disabledSites: disabledMap }, () => {
+                        updateSiteToggle();
+                        notifyBackground("sync-hostname", {
+                            hostname: activeHostname
+                        });
+                    });
                 }
-                chrome.storage.local.set({ disabledSites: disabledMap });
-                updateSiteToggle();
-
-                if (siteDisabled || !toggle || !toggle.checked) {
-                    removePaletteFromHostname(activeHostname);
-                    return;
-                }
-
-                const siteMap = sites || {};
-                const palette =
-                    siteMap[activeHostname] || siteMap["*"] || DEFAULT_PALETTE;
-                applyPaletteToHostname(activeHostname, normalizePalette(palette));
-            }
-        );
+            );
+        });
     });
 }
 
 if (newSiteSelect) {
     newSiteSelect.addEventListener("change", () => {
-        const newSiteDefault = newSiteSelect.value;
-        settingsState = {
-            ...settingsState,
-            newSiteDefault
-        };
-        chrome.storage.local.set({ settings: settingsState });
-
-        chrome.storage.local.get(STORAGE_DEFAULTS, ({ sites }) => {
-            const siteMap = sites || {};
-            if (siteMap[activeHostname]) return;
-            if (newSiteDefault === "disabled") {
-                removePaletteFromHostname(activeHostname);
-                return;
-            }
-            if (!toggle || !toggle.checked || siteDisabled) return;
-            const palette =
-                settingsState.defaultPalette || siteMap["*"] || DEFAULT_PALETTE;
-            applyPaletteToHostname(activeHostname, normalizePalette(palette));
+        refreshActiveTab().then(() => {
+            const newSiteDefault = newSiteSelect.value;
+            settingsState = {
+                ...settingsState,
+                newSiteDefault
+            };
+            chrome.storage.local.set({ settings: settingsState }, () => {
+                if (!activeHostname || activeHostname === "*") return;
+                notifyBackground("sync-hostname", {
+                    hostname: activeHostname
+                });
+            });
         });
     });
 }
 
 if (defaultPaletteSelect) {
     defaultPaletteSelect.addEventListener("change", () => {
-        const paletteName = defaultPaletteSelect.value;
-        const palette = normalizePalette(themes[paletteName] || DEFAULT_PALETTE);
-        settingsState = {
-            ...settingsState,
-            defaultPaletteName: paletteName,
-            defaultPalette: palette
-        };
-        chrome.storage.local.set({ settings: settingsState });
-
-        chrome.storage.local.get(STORAGE_DEFAULTS, ({ sites }) => {
-            const siteMap = sites || {};
-            if (siteMap[activeHostname]) return;
-            if (!toggle || !toggle.checked || siteDisabled) return;
-            if (settingsState.newSiteDefault === "disabled") return;
-            applyPaletteToHostname(activeHostname, palette);
+        refreshActiveTab().then(() => {
+            const paletteName = defaultPaletteSelect.value;
+            const palette = normalizePalette(themes[paletteName] || DEFAULT_PALETTE);
+            settingsState = {
+                ...settingsState,
+                defaultPaletteName: paletteName,
+                defaultPalette: palette
+            };
+            chrome.storage.local.set({ settings: settingsState }, () => {
+                if (!activeHostname || activeHostname === "*") return;
+                notifyBackground("sync-hostname", {
+                    hostname: activeHostname
+                });
+            });
         });
     });
 }
@@ -515,25 +752,86 @@ if (rolesDetails) {
     });
 }
 
+const openSettings = () => {
+    document.body.classList.add("settings-open");
+    const panel = document.querySelector(".settings-panel");
+    if (panel) panel.setAttribute("aria-hidden", "false");
+    if (openSettingsButton) openSettingsButton.disabled = true;
+};
+
+const closeSettings = () => {
+    document.body.classList.remove("settings-open");
+    const panel = document.querySelector(".settings-panel");
+    if (panel) panel.setAttribute("aria-hidden", "true");
+    if (openSettingsButton) openSettingsButton.disabled = false;
+};
+
+if (openSettingsButton) {
+    openSettingsButton.addEventListener("click", openSettings);
+}
+
+if (closeSettingsButton) {
+    closeSettingsButton.addEventListener("click", closeSettings);
+}
+
+if (clearAllDataButton) {
+    clearAllDataButton.addEventListener("click", () => {
+        const shouldClear = window.confirm(
+            "Clear all saved data for all sites? This will reset your settings."
+        );
+        if (!shouldClear) return;
+        chrome.storage.local.clear(() => {
+            chrome.storage.local.set(STORAGE_DEFAULTS, () => {
+                siteDisabled = false;
+                settingsState = { ...STORAGE_DEFAULTS.settings };
+                loadState();
+                notifyBackground("sync-all");
+            });
+        });
+    });
+}
+
 document.querySelectorAll("button[data-theme]").forEach(btn => {
     btn.addEventListener("click", () => {
-        const themeName = btn.dataset.theme;
-        currentPalette = normalizePalette(themes[themeName]);
-        syncInputs(currentPalette);
-        savePaletteForHost(activeHostname, currentPalette);
-        applyPaletteToActiveTab(currentPalette);
+        refreshActiveTab().then(() => {
+            const themeName = btn.dataset.theme;
+            if (themeName === "original") {
+                currentPalette = {};
+                const displayPalette = normalizePalette(basePalette);
+                syncInputs(displayPalette);
+                savePaletteForHost(activeHostname, currentPalette).then(() => {
+                    if (!activeHostname || activeHostname === "*") return;
+                    notifyBackground("sync-hostname", {
+                        hostname: activeHostname
+                    });
+                });
+                return;
+            }
+
+            currentPalette = normalizePalette(themes[themeName]);
+            syncInputs(currentPalette);
+            savePaletteForHost(activeHostname, currentPalette).then(() => {
+                if (!activeHostname || activeHostname === "*") return;
+                notifyBackground("sync-hostname", {
+                    hostname: activeHostname
+                });
+            });
+        });
     });
 });
 
 document.querySelectorAll("input[type=color]").forEach(input => {
     input.addEventListener("input", () => {
-        const role = input.dataset.role;
-        const value = input.value;
-        currentPalette = normalizePalette({
-            ...currentPalette,
-            [role]: value
+        refreshActiveTab().then(() => {
+            const role = input.dataset.role;
+            const value = input.value;
+            currentPalette = { ...currentPalette, [role]: value };
+            savePaletteForHost(activeHostname, currentPalette).then(() => {
+                if (!activeHostname || activeHostname === "*") return;
+                notifyBackground("sync-hostname", {
+                    hostname: activeHostname
+                });
+            });
         });
-        savePaletteForHost(activeHostname, currentPalette);
-        applyPaletteToActiveTab(currentPalette);
     });
 });
