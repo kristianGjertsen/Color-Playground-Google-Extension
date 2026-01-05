@@ -1,7 +1,8 @@
 {
     "manifest_version": 3,
     "name": "Color Playground",
-    "version": "0.1",
+    "version": "1.0",
+    "description": "Apply customizable color palettes to websites, with per-site presets, AI palettes, and per-element controls.",
     "action": {
         "default_popup": "popup.html"
     },

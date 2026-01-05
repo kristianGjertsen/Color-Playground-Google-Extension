@@ -197,9 +197,25 @@ const applyUiSettings = (ui) => {
     }
 };
 
-const isRestrictedUrl = (url) =>
-    url &&
-    (url.startsWith("chrome://") || url.startsWith("chrome-extension://"));
+const isRestrictedUrl = (url) => {
+    if (!url) return true;
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        if (parsed.protocol === "chrome:" || parsed.protocol === "chrome-extension:") {
+            return true;
+        }
+        if (host === "chrome.google.com" && parsed.pathname.startsWith("/webstore")) {
+            return true;
+        }
+        if (host === "chromewebstore.google.com") {
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return true;
+    }
+};
 
 const getHostnameFromUrl = (url) => {
     if (!url || isRestrictedUrl(url)) return "*";
@@ -214,6 +230,30 @@ const normalizePalette = (palette) => ({
     ...DEFAULT_PALETTE,
     ...(palette || {})
 });
+
+const toHexColor = (value) => {
+    if (!value || typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+        return trimmed.toLowerCase();
+    }
+    const rgbMatch = trimmed.match(/^rgba?\((.+)\)$/i);
+    if (!rgbMatch) return null;
+    const parts = rgbMatch[1].match(/-?\d+(\.\d+)?/g);
+    if (!parts || parts.length < 3) return null;
+    const toByte = (part) => {
+        const num = Number(part);
+        if (!Number.isFinite(num)) return null;
+        return Math.min(255, Math.max(0, Math.round(num)));
+    };
+    const r = toByte(parts[0]);
+    const g = toByte(parts[1]);
+    const b = toByte(parts[2]);
+    if (r === null || g === null || b === null) return null;
+    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b
+        .toString(16)
+        .padStart(2, "0")}`;
+};
 
 const extractPagePalette = (tabId) =>
     chrome.scripting.executeScript({
@@ -378,7 +418,10 @@ const syncInputs = (palette) => {
     document.querySelectorAll("input[type=color]").forEach(input => {
         const role = input.dataset.role;
         if (palette[role]) {
-            input.value = palette[role];
+            const hexValue = toHexColor(palette[role]);
+            if (hexValue) {
+                input.value = hexValue;
+            }
         }
     });
 };

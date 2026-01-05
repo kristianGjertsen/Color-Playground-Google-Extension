@@ -45,8 +45,25 @@ const engineCssPromise = fetch(ENGINE_CSS_URL)
     .then(response => response.text())
     .catch(() => "");
 
-const isRestrictedUrl = (url) =>
-    url.startsWith("chrome://") || url.startsWith("chrome-extension://");
+const isRestrictedUrl = (url) => {
+    if (!url) return true;
+    try {
+        const parsed = new URL(url);
+        const host = parsed.hostname.toLowerCase();
+        if (parsed.protocol === "chrome:" || parsed.protocol === "chrome-extension:") {
+            return true;
+        }
+        if (host === "chrome.google.com" && parsed.pathname.startsWith("/webstore")) {
+            return true;
+        }
+        if (host === "chromewebstore.google.com") {
+            return true;
+        }
+        return false;
+    } catch (error) {
+        return true;
+    }
+};
 
 const getHostnameFromUrl = (url) => {
     try {
