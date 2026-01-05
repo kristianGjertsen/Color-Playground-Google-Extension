@@ -73,23 +73,7 @@ const themes = {
     }
 };
 
-const STYLE_ENGINE_ID = "color-playground-engine";
-const STYLE_VARS_ID = "color-playground-vars";
-const LEGACY_STYLE_ID = "color-playground-style";
 const ORIGINAL_MARKER = "__original";
-const ROLE_ATTRS = {
-    bgPrimary: "data-cp-bg-primary",
-    bgSecondary: "data-cp-bg-secondary",
-    surfaceRaised: "data-cp-surface-raised",
-    textPrimary: "data-cp-text-primary",
-    textSecondary: "data-cp-text-secondary",
-    textHeading: "data-cp-text-heading",
-    accentPrimary: "data-cp-accent-primary",
-    accentSecondary: "data-cp-accent-secondary",
-    border: "data-cp-border",
-    icon: "data-cp-icon"
-};
-const ALL_ROLE_ATTRS = Object.values(ROLE_ATTRS);
 const DEFAULT_PALETTE = { ...themes.dark };
 const STORAGE_DEFAULTS = {
     enabled: false,
@@ -110,11 +94,6 @@ const STORAGE_DEFAULTS = {
     }
 };
 
-const ENGINE_CSS_URL = chrome.runtime.getURL("engine.css");
-const engineCssPromise = fetch(ENGINE_CSS_URL)
-    .then(response => response.text())
-    .catch(() => "");
-
 const toggle = document.getElementById("enabledToggle");
 const siteToggle = document.getElementById("siteToggle");
 const newSiteButtons = document.querySelectorAll("[data-site-default]");
@@ -126,10 +105,15 @@ const rolesDetails = document.querySelector(".roles-details");
 const openSettingsButton = document.getElementById("openSettings");
 const closeSettingsButton = document.getElementById("closeSettings");
 const clearAllDataButton = document.getElementById("clearAllData");
+const dataUsed = document.getElementById("dataUsed");
+const sitesSaved = document.getElementById("sitesSaved");
+
 let activeTabId = null;
 let activeHostname = "*";
 let currentPalette = {};
 let basePalette = { ...DEFAULT_PALETTE };
+
+//Preferanser lagret for extension
 let siteDisabled = false;
 let settingsState = {
     newSiteDefault: "disabled",
@@ -230,151 +214,6 @@ const normalizePalette = (palette) => ({
     ...DEFAULT_PALETTE,
     ...(palette || {})
 });
-
-const paletteToVarsCss = (palette) => {
-    const lines = [":root {"];
-    const entries = Object.entries(palette || {});
-    entries.forEach(([key, value]) => {
-        if (!value || key === ORIGINAL_MARKER) return;
-        const cssKey = `--${key.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}`;
-        lines.push(`  ${cssKey}: ${value};`);
-    });
-    lines.push("}");
-    return lines.join("\n");
-};
-
-const applyPaletteToTab = (tabId, palette) => {
-    const varsCss = paletteToVarsCss(palette);
-    const activeAttrs = Object.entries(ROLE_ATTRS)
-        .filter(([key]) => palette && palette[key])
-        .map(([, attr]) => attr);
-    engineCssPromise.then(engineCss => {
-        chrome.scripting.executeScript({
-            target: { tabId },
-            func: (engineId, varsId, legacyId, engineCssText, varsCssText, allAttrs, enabledAttrs) => {
-                const legacy = document.getElementById(legacyId);
-                if (legacy) legacy.remove();
-
-                const existingEngine = document.getElementById(engineId);
-                if (existingEngine) existingEngine.remove();
-                const existingVars = document.getElementById(varsId);
-                if (existingVars) existingVars.remove();
-
-                const root = document.head || document.documentElement;
-                const rootEl = document.documentElement;
-
-                allAttrs.forEach(attr => {
-                    if (enabledAttrs.includes(attr)) {
-                        rootEl.setAttribute(attr, "1");
-                    } else {
-                        rootEl.removeAttribute(attr);
-                    }
-                });
-
-                const engine = document.createElement("style");
-                engine.id = engineId;
-                engine.textContent = engineCssText;
-                root.appendChild(engine);
-
-                const vars = document.createElement("style");
-                vars.id = varsId;
-                vars.textContent = varsCssText;
-                root.appendChild(vars);
-
-                // Installer kun én gang per side
-                if (window.__cpButtonMarkerInstalled) {
-                    window.__cpMarkButtons?.();
-                    return;
-                }
-                window.__cpButtonMarkerInstalled = true;
-
-                const isTransparent = (value) =>
-                    !value ||
-                    value === "transparent" ||
-                    value === "rgba(0, 0, 0, 0)" ||
-                    value === "rgba(0,0,0,0)";
-
-                const toPx = (value) => parseFloat(value) || 0;
-
-                const markButtons = () => {
-                    document.querySelectorAll("a[href]").forEach(a => {
-                        const r = a.getBoundingClientRect();
-                        const width = r.width;
-                        const height = r.height;
-                        if (!width || !height) {
-                            a.removeAttribute("data-cp-button");
-                            return;
-                        }
-
-                        const area = width * height;
-                        const style = getComputedStyle(a);
-                        const paddingX = toPx(style.paddingLeft) + toPx(style.paddingRight);
-                        const borderRadius = toPx(style.borderRadius);
-                        const hasBg = !isTransparent(style.backgroundColor);
-                        const display = style.display;
-
-                        // NB: hasBg er ofte for strengt på SPA-sider.
-                        // Derfor: tillat også "knappete" uten bakgrunn hvis radius+padding er stor nok.
-                        const looksButtonyWithoutBg = borderRadius >= 10 && paddingX >= 18;
-
-                        const isLikelyButton =
-                            height >= 28 &&
-                            height <= 72 &&
-                            width >= 72 &&
-                            width <= 420 &&
-                            area <= 90000 &&
-                            paddingX >= 12 &&
-                            borderRadius >= 6 &&
-                            (hasBg || looksButtonyWithoutBg) &&
-                            (display === "inline-block" ||
-                                display === "inline-flex" ||
-                                display === "flex" ||
-                                display === "inline");
-
-                        if (isLikelyButton) {
-                            a.dataset.cpButton = "true";
-                        } else {
-                            a.removeAttribute("data-cp-button");
-                        }
-                    });
-                };
-
-                window.__cpMarkButtons = markButtons;
-
-                // Throttle kjøringer ved DOM-endringer
-                let timer = null;
-                const schedule = () => {
-                    if (timer) return;
-                    timer = setTimeout(() => {
-                        timer = null;
-                        markButtons();
-                    }, 200);
-                };
-
-                // Kjør flere ganger etter load for SPA-render
-                markButtons();
-                [150, 500, 1200, 2500, 5000].forEach(ms => setTimeout(markButtons, ms));
-
-                // Observer DOM og re-kjør når UI endrer seg
-                const obs = new MutationObserver(schedule);
-                obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
-                window.__cpButtonObserver = obs;
-
-                window.addEventListener("resize", schedule, { passive: true });
-                window.addEventListener("scroll", schedule, { passive: true });
-            },
-            args: [
-                STYLE_ENGINE_ID,
-                STYLE_VARS_ID,
-                LEGACY_STYLE_ID,
-                engineCss,
-                varsCss,
-                ALL_ROLE_ATTRS,
-                activeAttrs
-            ]
-        });
-    });
-};
 
 const extractPagePalette = (tabId) =>
     chrome.scripting.executeScript({
@@ -535,31 +374,6 @@ const refreshBasePalette = () => {
     });
 };
 
-const removePaletteFromTab = (tabId) => {
-    chrome.scripting.executeScript({
-        target: { tabId },
-        func: (engineId, varsId, legacyId, allAttrs) => {
-            [engineId, varsId, legacyId].forEach(id => {
-                const node = document.getElementById(id);
-                if (node) node.remove();
-            });
-            allAttrs.forEach(attr => {
-                document.documentElement.removeAttribute(attr);
-            });
-        },
-        args: [STYLE_ENGINE_ID, STYLE_VARS_ID, LEGACY_STYLE_ID, ALL_ROLE_ATTRS]
-    });
-};
-
-const forEachEligibleTab = (callback) => {
-    chrome.tabs.query({}, (tabs) => {
-        tabs.forEach(tab => {
-            if (!tab || !tab.id || !tab.url || isRestrictedUrl(tab.url)) return;
-            callback(tab);
-        });
-    });
-};
-
 const syncInputs = (palette) => {
     document.querySelectorAll("input[type=color]").forEach(input => {
         const role = input.dataset.role;
@@ -605,6 +419,10 @@ const loadState = () => {
             setWindowSizeButtons(uiState.windowSize);
 
             const siteMap = sites || {};
+            if (sitesSaved) {
+                const count = Object.keys(siteMap).filter(key => key !== "*").length;
+                sitesSaved.textContent = `Custom palettes saved on ${count} sites`;
+            }
             const baseMap = bases || {};
             if (baseMap[activeHostname]) {
                 basePalette = normalizePalette(baseMap[activeHostname]);
@@ -639,24 +457,15 @@ const savePaletteForHost = (hostname, palette) =>
             } else {
                 nextSites[hostname] = cleaned;
             }
-            chrome.storage.local.set({ sites: nextSites }, resolve);
+            chrome.storage.local.set({ sites: nextSites }, () => {
+                if (sitesSaved) {
+                    const count = Object.keys(nextSites).filter(key => key !== "*").length;
+                    sitesSaved.textContent = `Custom palettes saved on ${count} sites`;
+                }
+                resolve();
+            });
         });
     });
-
-const applyPaletteToActiveTab = (palette) => {
-    if (!toggle || !toggle.checked) return;
-    if (!activeHostname || activeHostname === "*") return;
-    if (siteDisabled) return;
-    if (!activeTabId) return;
-    chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
-        const merged = buildMergedPalette(activeHostname, data);
-        if (!merged) {
-            removePaletteFromHostname(activeHostname);
-            return;
-        }
-        applyPaletteToTab(activeTabId, merged);
-    });
-};
 
 const updateUiState = (next) => {
     const nextState = { ...(next || {}) };
@@ -690,45 +499,6 @@ const buildMergedPalette = (hostname, data) => {
         return null;
     }
     return normalizePalette(fallbackPalette);
-};
-
-const applyStoredPalettesToAllTabs = () => {
-    chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
-        const disabledMap = data.disabledSites || {};
-        forEachEligibleTab(tab => {
-            const hostname = getHostnameFromUrl(tab.url);
-            if (disabledMap[hostname]) {
-                removePaletteFromTab(tab.id);
-                return;
-            }
-            const paletteToApply = buildMergedPalette(hostname, data);
-            if (!paletteToApply) {
-                removePaletteFromTab(tab.id);
-                return;
-            }
-            applyPaletteToTab(tab.id, paletteToApply);
-        });
-    });
-};
-
-const applyPaletteToHostname = (hostname, palette) => {
-    forEachEligibleTab(tab => {
-        if (getHostnameFromUrl(tab.url) === hostname) {
-            applyPaletteToTab(tab.id, palette);
-        }
-    });
-};
-
-const removePaletteFromHostname = (hostname) => {
-    forEachEligibleTab(tab => {
-        if (getHostnameFromUrl(tab.url) === hostname) {
-            removePaletteFromTab(tab.id);
-        }
-    });
-};
-
-const removePaletteFromAllTabs = () => {
-    forEachEligibleTab(tab => removePaletteFromTab(tab.id));
 };
 
 const notifyBackground = (type, payload = {}) => {
@@ -898,12 +668,23 @@ if (rolesDetails) {
     });
 }
 
-const openSettings = () => {
+const openSettings = async () => {
     document.body.classList.add("settings-open");
     const panel = document.querySelector(".settings-panel");
     if (panel) panel.setAttribute("aria-hidden", "false");
     if (openSettingsButton) openSettingsButton.disabled = true;
+    const bytes = await getStorageUsage();
+
+    dataUsed.textContent = `Storage used : \n${bytes} / 5242880 (bytes) \n(${(bytes / 5242880).toFixed(5)} MB / 5 MB)`;
+
+    chrome.storage.local.get(STORAGE_DEFAULTS, ({ sites }) => {
+        if (sitesSaved) {
+            const count = Object.keys(sites || {}).filter(key => key !== "*").length;
+            sitesSaved.textContent = `Custom palettes saved on ${count} sites`;
+        }
+    });
 };
+
 
 const closeSettings = () => {
     document.body.classList.remove("settings-open");
@@ -923,7 +704,7 @@ if (closeSettingsButton) {
 if (clearAllDataButton) {
     clearAllDataButton.addEventListener("click", () => {
         const shouldClear = window.confirm(
-            "Clear all saved data for all sites? This will reset your settings. And saved color palettes on sites will be lost."
+            "Clear all saved data for all sites? This will reset your settings and remove all saved color palettes."
         );
         if (!shouldClear) return;
         chrome.storage.local.clear(() => {
@@ -931,6 +712,9 @@ if (clearAllDataButton) {
                 siteDisabled = false;
                 settingsState = { ...STORAGE_DEFAULTS.settings };
                 loadState();
+                if (sitesSaved) {
+                    sitesSaved.textContent = "Custom palettes saved on 0 sites";
+                }
                 notifyBackground("sync-all");
             });
         });
@@ -1040,22 +824,26 @@ if (aiButton && aiInput) {
             return;
         }
 
-        chrome.storage.local.get({ aiLastRequest: 0 }, ({ aiLastRequest }) => {
-            const now = Date.now();
-            const elapsed = now - aiLastRequest;
-            if (elapsed < AI_COOLDOWN_MS) {
-                startAiCooldown(aiLastRequest);
-                return;
-            }
+        chrome.storage.local.get(
+            { aiLastRequest: 0, aiSendCount: 0 },
+            ({ aiLastRequest, aiSendCount }) => {
+                const now = Date.now();
+                const elapsed = now - aiLastRequest;
+                if (elapsed < AI_COOLDOWN_MS) {
+                    startAiCooldown(aiLastRequest);
+                    return;
+                }
 
-            chrome.storage.local.set({ aiLastRequest: now }, () => {
-                startAiCooldown(now);
-                chrome.runtime.sendMessage({
-                    type: "AI_GENERATE_PALETTE",
-                    prompt
-                });
+                chrome.storage.local.set(
+                    { aiLastRequest: now, aiSendCount: aiSendCount + 1 },
+                    () => {
+                        startAiCooldown(now);
+                        chrome.runtime.sendMessage({
+                            type: "AI_GENERATE_PALETTE",
+                            prompt
+                        });
+                    });
             });
-        });
     });
 }
 
@@ -1069,3 +857,31 @@ if (aiButton) {
         }
     });
 }
+
+// Laste ned all data fra chrome storage
+const downloadJson = () => {
+    chrome.storage.local.get(null, (data) => {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "color-playground-data.json";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    });
+};
+const downloadDataButton = document.getElementById("downloadData");
+if (downloadDataButton) {
+    downloadDataButton.addEventListener("click", downloadJson);
+}
+
+// Vis antall data som er lagret
+const getStorageUsage = () =>
+    new Promise(resolve => {
+        chrome.storage.local.getBytesInUse(null, bytes => {
+            resolve(bytes);
+        });
+    });

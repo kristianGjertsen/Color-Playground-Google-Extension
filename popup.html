@@ -99,10 +99,10 @@
 
         <section>
             <h2 class="ai-title">
-                Generate palette using AI </span>
+                Generate palette using AI
             </h2>
 
-            <textarea id="aiPrompt" rows="3" placeholder="Describe a theme (e.g. calm nordic, pink accent)"></textarea>
+            <textarea id="aiPrompt" rows="3" placeholder="Describe a theme (e.g. calm Nordic, pink accent)"></textarea>
 
             <button id="aiGenerateButton" type="button">
                 Generate
@@ -170,6 +170,18 @@
                         <option value="orange">Orange</option>
                     </select>
                 </div>
+
+                <div>
+                    <h3>Data usage</h3>
+                    <h4 id="dataUsed">Storage used:</h4>
+                    <h4 id="sitesSaved">Custom palettes saved on 0 sites</h4>
+
+                    <button id="downloadData" class="full-width-button" type="button">
+                        Download all saved data (JSON file)
+                    </button>
+
+                </div>
+
                 <button id="clearAllData" class="full-width-button" type="button">
                     Clear all saved data
                 </button>

@@ -7,7 +7,6 @@
     --ui-radius: calc(12px * var(--ui-scale));
     --ui-space: calc(10px * var(--ui-scale));
     --ui-space-sm: calc(6px * var(--ui-scale));
-    --ui-space-lg: calc(14px * var(--ui-scale));
     --ui-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
     --ui-shadow-soft: 0 10px 20px rgba(0, 0, 0, 0.16);
     --ui-bg: #0b0f14;
@@ -20,8 +19,6 @@
     --ui-accent-strong: #55e0d2;
     --ui-accent-contrast: #041312;
     --ui-danger: #ef4444;
-    --ui-gradient-1: rgba(53, 194, 183, 0.35);
-    --ui-gradient-2: rgba(14, 165, 233, 0.25);
     --ui-highlight: #1a2431;
 }
 
@@ -29,22 +26,6 @@
 *::before,
 *::after {
     box-sizing: border-box;
-}
-
-body[data-theme="carbon"] {
-    --ui-bg: #0b0f14;
-    --ui-surface: #141c25;
-    --ui-surface-2: #0f1620;
-    --ui-text: #e6edf7;
-    --ui-muted: #9aa6b2;
-    --ui-border: #1f2a37;
-    --ui-accent: #35c2b7;
-    --ui-accent-strong: #55e0d2;
-    --ui-accent-contrast: #041312;
-    --ui-danger: #ef4444;
-    --ui-gradient-1: rgba(53, 194, 183, 0.35);
-    --ui-gradient-2: rgba(14, 165, 233, 0.25);
-    --ui-highlight: #1a2431;
 }
 
 body[data-theme="paper"] {
@@ -58,8 +39,6 @@ body[data-theme="paper"] {
     --ui-accent-strong: #fb923c;
     --ui-accent-contrast: #2b1506;
     --ui-danger: #dc2626;
-    --ui-gradient-1: rgba(249, 115, 22, 0.25);
-    --ui-gradient-2: rgba(16, 185, 129, 0.18);
     --ui-highlight: #f7ede2;
 }
 
@@ -74,8 +53,6 @@ body[data-theme="sage"] {
     --ui-accent-strong: #34d399;
     --ui-accent-contrast: #052117;
     --ui-danger: #dc2626;
-    --ui-gradient-1: rgba(16, 185, 129, 0.25);
-    --ui-gradient-2: rgba(56, 189, 248, 0.18);
     --ui-highlight: #eef7f1;
 }
 
@@ -100,6 +77,7 @@ body.roles-expanded {
 
 body.settings-open {
     overflow-y: hidden;
+    height: var(--ui-height-expanded);
 }
 
 .main-content {
@@ -107,6 +85,7 @@ body.settings-open {
     z-index: 1;
     margin: var(--ui-space);
     padding: var(--ui-space);
+    padding-bottom: calc(var(--ui-space));
     background: var(--ui-surface);
     border: 1px solid var(--ui-border);
     border-radius: var(--ui-radius);
@@ -161,8 +140,6 @@ h2 {
     color: var(--ui-text);
 }
 
-
-
 h3 {
     font-size: calc(10px * var(--ui-scale));
     text-transform: uppercase;
@@ -171,22 +148,17 @@ h3 {
     margin: 0 0 6px;
 }
 
-.settings-button,
-.settings-close {
-    border: 1px solid var(--ui-border);
-    background: var(--ui-surface-2);
-    color: var(--ui-text);
-    border-radius: calc(8px * var(--ui-scale));
-    padding: 4px 8px;
-    cursor: pointer;
-    font-size: calc(11px * var(--ui-scale));
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+h4 {
+    font-size: calc(7px * var(--ui-scale));
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ui-muted);
+    margin: 0 0 4px;
 }
 
-.settings-button:hover,
-.settings-close:hover {
-    background: var(--ui-highlight);
-    border-color: var(--ui-accent);
+.settings-button,
+.settings-close {
+    padding: 4px 8px;
 }
 
 .settings-panel {
@@ -200,6 +172,8 @@ h3 {
     transition: transform 0.25s ease;
     z-index: 2;
     box-shadow: var(--ui-shadow);
+    display: flex;
+    flex-direction: column;
 }
 
 body.settings-open .settings-panel {
@@ -300,6 +274,10 @@ body.settings-open .settings-panel {
     background: var(--ui-border);
     border-radius: 999px;
     transition: background 0.2s ease;
+}
+
+.switch input:not(:checked) + .slider {
+    background: var(--ui-danger);
 }
 
 .slider:before {
@@ -450,6 +428,10 @@ button:active {
     display: flex;
     flex-direction: column;
     gap: var(--ui-space);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(var(--ui-space) + 6px);
 }
 
 .settings-section {
@@ -460,6 +442,10 @@ button:active {
 .settings-section:last-of-type {
     border-bottom: none;
     padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 .setting-row {
@@ -531,5 +517,10 @@ input[type="color"] {
 #clearAllData {
     background: rgb(255, 0, 0);
     color: white;
-    margin-top: 90px;
+    margin-top: 20px;
+}
+
+
+#dataUsed {
+    white-space: pre-line;
 }

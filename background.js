@@ -1,6 +1,7 @@
 const STYLE_ENGINE_ID = "color-playground-engine";
 const STYLE_VARS_ID = "color-playground-vars";
 const LEGACY_STYLE_ID = "color-playground-style";
+// Lagrede palletter og standardinnstillinger
 const DEFAULT_PALETTE = {
     bgPrimary: "#0f172a",
     bgSecondary: "#020617",
@@ -157,10 +158,10 @@ const applyPaletteToTab = (tabId, palette) => {
                     const hasBg = !isTransparent(style.backgroundColor);
                     const display = style.display;
 
-                    // NB: hasBg er ofte for strengt på SPA-sider.
-                    // Derfor: tillat også "knappete" uten bakgrunn hvis radius+padding er stor nok.
                     const looksButtonyWithoutBg = borderRadius >= 10 && paddingX >= 18;
 
+                    // knapper er ofte ikke <button>-element
+                    //Skrevet inn kode for å prøve å fange opp lenker som ser ut som knapper
                     const isLikelyButton =
                         height >= 28 &&
                         height <= 72 &&
@@ -186,6 +187,7 @@ const applyPaletteToTab = (tabId, palette) => {
             window.__cpMarkButtons = markButtons;
 
             // Throttle kjøringer ved DOM-endringer
+            //hadde problemer med at det ble kjørt for ofte på noen sider
             let timer = null;
             const schedule = () => {
                 if (timer) return;
@@ -231,8 +233,6 @@ const analyzePageColors = (tabId) =>
     chrome.scripting.executeScript({
         target: { tabId },
         func: () => {
-            console.log("Extracting colors in page");
-
             const elements = [
                 document.body,
                 ...document.querySelectorAll("main, section, header, footer, nav"),
@@ -372,6 +372,7 @@ const analyzePageColors = (tabId) =>
         }
     });
 
+//Henter ut data fra storage, for å huske palleten som og enablesettings 
 const getStorage = () =>
     new Promise(resolve => chrome.storage.local.get(STORAGE_DEFAULTS, resolve));
 
@@ -425,6 +426,7 @@ const captureOriginalForTab = async (tabId, hostname) => {
     const resolvedHostname = hostname || getHostnameFromUrl(tab.url);
     if (!resolvedHostname || resolvedHostname === "*") return;
 
+    // Fjern eventuell tidligere palett
     removePaletteFromTab(tab.id);
     await wait(80);
 
@@ -465,7 +467,7 @@ const captureOriginalForTab = async (tabId, hostname) => {
     await syncHostname(resolvedHostname);
 };
 
-const resolvePaletteForTab = async (tabId, url, data, options = {}) => {
+const resolvePaletteForTab = async (url, data) => {
     if (!data.enabled) return null;
     if (!url || isRestrictedUrl(url)) return null;
     const hostname = getHostnameFromUrl(url);
@@ -496,7 +498,7 @@ const syncTabWithData = async (tab, data, options = {}) => {
         const hostname = getHostnameFromUrl(tab.url);
         await ensureBasePalette(tab.id, hostname, data, DEFAULT_PALETTE);
     }
-    const palette = await resolvePaletteForTab(tab.id, tab.url, data, options);
+    const palette = await resolvePaletteForTab(tab.url, data);
     if (!palette) {
         removePaletteFromTab(tab.id);
         return;
@@ -514,11 +516,17 @@ const syncAllTabs = async () => {
     await Promise.all(tabs.map(tab => syncTabWithData(tab, data)));
 };
 
-const syncActiveTab = async () => {
-    const tab = await queryActiveTab();
-    if (!tab) return;
+const syncTabById = async (tabId, options = {}) => {
+    if (!tabId) return;
+    let tab = null;
+    try {
+        tab = await chrome.tabs.get(tabId);
+    } catch (error) {
+        tab = null;
+    }
+    if (!tab || !tab.url || isRestrictedUrl(tab.url)) return;
     const data = await getStorage();
-    await syncTabWithData(tab, data);
+    await syncTabWithData(tab, data, options);
 };
 
 const syncHostname = async (hostname) => {
@@ -535,16 +543,10 @@ const syncHostname = async (hostname) => {
     await Promise.all(matches.map(tab => syncTabWithData(tab, data)));
 };
 
-console.log("Service worker started");
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message || !message.type) return;
     if (message.type === "sync-all") {
         syncAllTabs().then(() => sendResponse({ ok: true }));
-        return true;
-    }
-    if (message.type === "sync-active") {
-        syncActiveTab().then(() => sendResponse({ ok: true }));
         return true;
     }
     if (message.type === "sync-hostname") {
@@ -560,15 +562,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status !== "complete") return;
-    if (!tab.url || isRestrictedUrl(tab.url)) return;
-    getStorage().then((data) => {
-        syncTabWithData(tab, data, { ensureBase: true });
-    });
+    const isComplete = changeInfo.status === "complete";
+    const hasUrlUpdate = Boolean(changeInfo.url);
+    if (!isComplete && !hasUrlUpdate) return;
+    syncTabById(tabId, { ensureBase: isComplete });
 });
 
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+    syncTabById(tabId);
+});
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+// AI-generert palette, via ekstern Api kall til Google Cloud Function
+//lite tester av svar, men testes i API scriptet
+chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type !== "AI_GENERATE_PALETTE") return;
 
     fetch("https://colorplayground.kristiangjertsen5.workers.dev", {
@@ -578,11 +584,9 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     })
         .then(r => r.json())
         .then((response) => {
-            console.log("AI response:", response);
             const { palette } = response || {};
             if (!palette) return;
 
-            // 🔁 Bruk samme vei som presets
             chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
                 if (!tab?.id || !tab.url) return;
 
