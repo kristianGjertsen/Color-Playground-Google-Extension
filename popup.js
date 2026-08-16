@@ -75,6 +75,8 @@ const themes = {
 
 const ORIGINAL_MARKER = "__original";
 const DEFAULT_PALETTE = { ...themes.dark };
+const AI_PALETTE_ENDPOINT = "https://colorplayground.kristiangjertsen5.workers.dev";
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 const STORAGE_DEFAULTS = {
     enabled: false,
     sites: {
@@ -230,6 +232,12 @@ const normalizePalette = (palette) => ({
     ...DEFAULT_PALETTE,
     ...(palette || {})
 });
+
+const isValidPalette = (palette) =>
+    Boolean(palette) &&
+    Object.keys(DEFAULT_PALETTE).every(
+        key => typeof palette[key] === "string" && HEX_COLOR_RE.test(palette[key])
+    );
 
 const toHexColor = (value) => {
     if (!value || typeof value !== "string") return null;
@@ -813,14 +821,125 @@ const aiInput = document.getElementById("aiPrompt");
 const aiButton = document.getElementById("aiGenerateButton");
 const aiStatus = document.getElementById("aiStatus");
 const aiSpinner = document.getElementById("aiSpinner");
+const aiResponseButton = document.getElementById("aiResponseButton");
+const aiResponseOverlay = document.getElementById("aiResponseOverlay");
+const aiResponseClose = document.getElementById("aiResponseClose");
+const aiResponseContent = document.getElementById("aiResponseContent");
 const AI_COOLDOWN_MS = 20000;
+const AI_RESPONSE_TIMEOUT_MS = 120000;
 let aiCooldownTimer = null;
+let aiResponseTimeout = null;
+let aiIsGenerating = false;
+let lastAiResponse = null;
+let activeAiRequestId = null;
+let activeAiStartedAt = 0;
+
+const setAiResponse = (response) => {
+    lastAiResponse = response;
+    if (aiResponseContent) {
+        const displayResponse = response?.ok
+            ? { ok: true, palette: response.palette }
+            : { ok: false, error: response?.error || "Unknown error." };
+        aiResponseContent.textContent = JSON.stringify(displayResponse, null, 2);
+    }
+    if (aiResponseButton) {
+        aiResponseButton.hidden = !response;
+    }
+};
+
+const setAiGenerating = (isGenerating) => {
+    aiIsGenerating = isGenerating;
+    if (aiButton) {
+        aiButton.disabled = isGenerating;
+        aiButton.textContent = isGenerating ? "Generating..." : "Generate";
+    }
+    if (aiSpinner) {
+        aiSpinner.classList.toggle("is-active", isGenerating);
+    }
+    if (aiStatus) {
+        aiStatus.textContent = isGenerating ? "Generating..." : "";
+    }
+};
+
+const setAiApplying = () => {
+    aiIsGenerating = true;
+    if (aiButton) {
+        aiButton.disabled = true;
+        aiButton.textContent = "Applying...";
+    }
+    if (aiSpinner) {
+        aiSpinner.classList.add("is-active");
+    }
+    if (aiStatus) {
+        aiStatus.textContent = "Applying...";
+    }
+};
+
+const requestAiPalette = async (prompt, requestId) => {
+    const r = await fetch(AI_PALETTE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+    });
+    const response = await r.json().catch(() => null);
+    if (!r.ok) {
+        throw new Error(response?.error || `AI request failed with status ${r.status}`);
+    }
+
+    const { palette } = response || {};
+    if (!isValidPalette(palette)) {
+        throw new Error("AI response did not include a valid palette.");
+    }
+
+    return {
+        ok: true,
+        requestId,
+        prompt,
+        createdAt: Date.now(),
+        palette
+    };
+};
+
+const finishAiRequest = async (response) => {
+    if (!response || response.requestId !== activeAiRequestId) return;
+
+    if (aiResponseTimeout) {
+        clearTimeout(aiResponseTimeout);
+        aiResponseTimeout = null;
+    }
+
+    setAiResponse(response);
+
+    if (!response.ok) {
+        setAiGenerating(false);
+        startAiCooldown(activeAiStartedAt || Date.now());
+        if (aiStatus) aiStatus.textContent = "Failed. See response.";
+        return;
+    }
+
+    setAiApplying();
+    currentPalette = normalizePalette(response.palette);
+    syncInputs(currentPalette);
+    await savePaletteForHost(activeHostname, currentPalette);
+    if (activeHostname && activeHostname !== "*") {
+        await requestBackground("sync-hostname", {
+            hostname: activeHostname
+        });
+    }
+    setAiGenerating(false);
+    startAiCooldown(activeAiStartedAt || Date.now());
+    if (aiStatus) aiStatus.textContent = "Done.";
+};
 
 const updateAiCooldownUi = (remainingMs) => {
     if (!aiButton) return;
+    if (aiIsGenerating) return;
     if (remainingMs <= 0) {
         aiButton.disabled = false;
-        if (aiStatus) aiStatus.textContent = "";
+        aiButton.textContent = "Generate";
+        if (aiStatus) {
+            aiStatus.textContent = lastAiResponse ? "Done." : "";
+        }
         if (aiSpinner) aiSpinner.classList.remove("is-active");
         if (aiCooldownTimer) {
             clearInterval(aiCooldownTimer);
@@ -830,9 +949,10 @@ const updateAiCooldownUi = (remainingMs) => {
     }
 
     aiButton.disabled = true;
-    if (aiSpinner) aiSpinner.classList.add("is-active");
+    aiButton.textContent = "Generate";
+    if (aiSpinner) aiSpinner.classList.remove("is-active");
     if (aiStatus) {
-        aiStatus.textContent = `Cooldown: ${Math.ceil(remainingMs / 1000)}s`;
+        aiStatus.textContent = lastAiResponse ? "Done." : "";
     }
 };
 
@@ -880,13 +1000,58 @@ if (aiButton && aiInput) {
                 chrome.storage.local.set(
                     { aiLastRequest: now, aiSendCount: aiSendCount + 1 },
                     () => {
-                        startAiCooldown(now);
-                        chrome.runtime.sendMessage({
-                            type: "AI_GENERATE_PALETTE",
-                            prompt
-                        });
+                        activeAiRequestId = `${now}-${Math.random().toString(16).slice(2)}`;
+                        activeAiStartedAt = now;
+                        setAiResponse(null);
+                        setAiGenerating(true);
+
+                        if (aiResponseTimeout) {
+                            clearTimeout(aiResponseTimeout);
+                        }
+                        aiResponseTimeout = setTimeout(() => {
+                            finishAiRequest({
+                                ok: false,
+                                requestId: activeAiRequestId,
+                                prompt,
+                                createdAt: Date.now(),
+                                error: "Timed out while waiting for AI response."
+                            });
+                        }, AI_RESPONSE_TIMEOUT_MS);
+
+                        requestAiPalette(prompt, activeAiRequestId)
+                            .then(finishAiRequest)
+                            .catch(error => {
+                                finishAiRequest({
+                                    ok: false,
+                                    requestId: activeAiRequestId,
+                                    prompt,
+                                    createdAt: Date.now(),
+                                    error: error.message
+                                });
+                            });
                     });
             });
+    });
+}
+
+if (aiResponseButton && aiResponseOverlay) {
+    aiResponseButton.addEventListener("click", () => {
+        if (!lastAiResponse) return;
+        aiResponseOverlay.hidden = false;
+    });
+}
+
+if (aiResponseClose && aiResponseOverlay) {
+    aiResponseClose.addEventListener("click", () => {
+        aiResponseOverlay.hidden = true;
+    });
+}
+
+if (aiResponseOverlay) {
+    aiResponseOverlay.addEventListener("click", (event) => {
+        if (event.target === aiResponseOverlay) {
+            aiResponseOverlay.hidden = true;
+        }
     });
 }
 

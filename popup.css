@@ -382,6 +382,13 @@ button:active {
     color: var(--ui-muted);
 }
 
+.ai-response-button {
+    margin-left: auto;
+    padding: 2px 6px;
+    font-size: calc(10px * var(--ui-scale));
+    border-radius: calc(7px * var(--ui-scale));
+}
+
 .ai-spinner {
     width: 12px;
     height: 12px;
@@ -400,6 +407,67 @@ button:active {
     to {
         transform: rotate(360deg);
     }
+}
+
+.ai-response-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--ui-space);
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.ai-response-overlay[hidden],
+.ai-response-button[hidden] {
+    display: none;
+}
+
+.ai-response-modal {
+    width: 100%;
+    max-height: calc(100vh - (var(--ui-space) * 2));
+    overflow: hidden;
+    background: var(--ui-surface);
+    border: 1px solid var(--ui-border);
+    border-radius: calc(8px * var(--ui-scale));
+    box-shadow: var(--ui-shadow);
+    display: flex;
+    flex-direction: column;
+}
+
+.ai-response-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-sm);
+    padding: var(--ui-space);
+    border-bottom: 1px solid var(--ui-border);
+}
+
+.ai-response-header h2 {
+    margin: 0;
+    color: var(--ui-text);
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+
+.ai-response-close {
+    padding: 4px 8px;
+}
+
+#aiResponseContent {
+    margin: 0;
+    padding: var(--ui-space);
+    max-height: 320px;
+    overflow: auto;
+    background: var(--ui-surface-2);
+    color: var(--ui-text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: calc(10px * var(--ui-scale));
+    line-height: 1.45;
+    white-space: pre-wrap;
 }
 
 .original-button {

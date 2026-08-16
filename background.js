@@ -37,8 +37,11 @@ const STORAGE_DEFAULTS = {
     sites: {},
     disabledSites: {},
     settings: DEFAULT_SETTINGS,
-    bases: {}
+    bases: {},
+    aiLastResponse: null
 };
+const AI_PALETTE_ENDPOINT = "https://colorplayground.kristiangjertsen5.workers.dev";
+const HEX_COLOR_RE = /^#[0-9a-f]{6}$/i;
 
 const ENGINE_CSS_URL = chrome.runtime.getURL("engine.css");
 const engineCssPromise = fetch(ENGINE_CSS_URL)
@@ -77,6 +80,12 @@ const normalizePalette = (palette) => ({
     ...DEFAULT_PALETTE,
     ...(palette || {})
 });
+
+const isValidPalette = (palette) =>
+    Boolean(palette) &&
+    Object.keys(DEFAULT_PALETTE).every(
+        key => typeof palette[key] === "string" && HEX_COLOR_RE.test(palette[key])
+    );
 
 const paletteToVarsCss = (palette) => {
     const lines = [":root {"];
@@ -589,37 +598,65 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
     syncTabById(tabId);
 });
 
-// AI-generert palette, via ekstern Api kall til Google Cloud Function
-//lite tester av svar, men testes i API scriptet
-chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.type !== "AI_GENERATE_PALETTE") return;
-
-    fetch("https://colorplayground.kristiangjertsen5.workers.dev", {
+const generateAiPalette = async (prompt) => {
+    const r = await fetch(AI_PALETTE_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: msg.prompt })
-    })
-        .then(r => r.json())
-        .then((response) => {
-            const { palette } = response || {};
-            if (!palette) return;
+        body: JSON.stringify({ prompt })
+    });
+    const response = await r.json().catch(() => null);
+    if (!r.ok) {
+        throw new Error(response?.error || `AI request failed with status ${r.status}`);
+    }
 
-            chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-                if (!tab?.id || !tab.url) return;
+    const { palette } = response || {};
+    if (!isValidPalette(palette)) {
+        throw new Error("AI response did not include a valid palette.");
+    }
 
-                const hostname = new URL(tab.url).hostname;
+    const tab = await queryActiveTab();
+    if (!tab?.id || !tab.url || isRestrictedUrl(tab.url)) {
+        throw new Error("No active webpage available for the generated palette.");
+    }
 
-                chrome.storage.local.get(STORAGE_DEFAULTS, (data) => {
-                    const sites = { ...(data.sites || {}) };
-                    sites[hostname] = palette;
+    const hostname = new URL(tab.url).hostname;
+    const data = await getStorage();
+    const sites = { ...(data.sites || {}) };
+    sites[hostname] = palette;
 
-                    chrome.storage.local.set({ sites }, () => {
-                        applyPaletteToTab(tab.id, normalizePalette(palette));
-                    });
-                });
+    await new Promise(resolve => chrome.storage.local.set({ sites }, resolve));
+    applyPaletteToTab(tab.id, normalizePalette(palette));
+
+    return { palette, hostname };
+};
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || msg.type !== "AI_GENERATE_PALETTE") return;
+
+    sendResponse({ ok: true, accepted: true, requestId: msg.requestId });
+
+    generateAiPalette(msg.prompt)
+        .then(result => {
+            chrome.storage.local.set({
+                aiLastResponse: {
+                    ok: true,
+                    requestId: msg.requestId,
+                    prompt: msg.prompt,
+                    createdAt: Date.now(),
+                    ...result
+                }
             });
         })
         .catch(err => {
             console.error("AI palette error:", err);
+            chrome.storage.local.set({
+                aiLastResponse: {
+                    ok: false,
+                    requestId: msg.requestId,
+                    prompt: msg.prompt,
+                    createdAt: Date.now(),
+                    error: err.message
+                }
+            });
         });
 });
