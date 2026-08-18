@@ -1,0 +1,46 @@
+{
+  "id": "Color Playground",
+  "year": 2026,
+  "sortDate": "2026-01-14",
+  "languages": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "Chrome Extension",
+    "Cloudflare API"
+  ],
+  "img": "image.png",
+  "imgAlt": "Image of Color Playground",
+  "content": {
+    "no": {
+      "title": "Color Playground - Extension for Chrome",
+      "shortText": "Chrome-utvidelse for fargetemaer på nettsider, med lokal lagring og AI-forslag.",
+      "longText": "Color Playground er en utvidelse som lar deg endre fargene på nettsteder, (ikke alle elementer kan alltid endres pga ulik implementasjon, men det fungerer på mange sider). Du kan bruke ferdige temaer, justere farger selv eller tilpasse utseendet per nettside for bedre lesbarhet og komfort. Utvidelsen lagrer innstillingene lokalt og gir deg full kontroll over hvordan nettsider ser ut. Kan bruke innebygd AI for å generere nye fargetemaer basert på dine preferanser. Dette gjøres via en API til Cloudflare som bruker en Gemini-modell til å returnere JSON med fargekoder. All lagret data kan lastes ned og slettes når som helst."
+    },
+    "en": {
+      "title": "Color Playground - Extension for Chrome",
+      "shortText": "Chrome extension for website color themes with local settings and AI-assisted suggestions.",
+      "longText": "Color Playground lets you adjust website colors to your liking (not every element can change on every site, but it works on many). Use preset themes, tweak colors yourself, or customize per site for better readability and comfort. The extension stores settings locally and gives you full control over how sites appear. It can also call an AI via a Cloudflare API using a Gemini model to suggest new color themes based on your preferences. All stored data can be downloaded and deleted at any time."
+    }
+  },
+  "buttons": [
+    {
+      "href": "https://chromewebstore.google.com/detail/color-playground/gfkpmegeahfcdgnlkikhkkpphdadjdej",
+      "label": {
+        "no": "Se i Chrome Web Store",
+        "en": "View in Chrome Web Store"
+      },
+      "ariaLabel": {
+        "no": "Åpne Color Playground i Chrome Web Store",
+        "en": "Open Color Playground in the Chrome Web Store"
+      }
+    },
+    {
+      "href": "https://github.com/kristianGjertsen/Color-Playground-Google-Extension",
+      "label": {
+        "no": "Se koden på GitHub",
+        "en": "View the code on GitHub"
+      }
+    }
+  ]
+}
